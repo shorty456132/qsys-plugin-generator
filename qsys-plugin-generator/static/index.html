@@ -36,6 +36,56 @@
       font-size: 0.9rem;
     }
 
+    /* ---- page layout ---- */
+    .page-layout {
+      width: 100%;
+      max-width: 720px;
+      transition: max-width 0.5s ease;
+    }
+
+    .page-layout.chat-active {
+      max-width: 1480px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 720px);
+      gap: 24px;
+    }
+
+    .chat-panel {
+      background: #242424;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 28px;
+      display: none;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .page-layout.chat-active .chat-panel {
+      display: flex;
+    }
+
+    .chat-panel .output-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .chat-panel .output-section #chatHistory {
+      flex: 1;
+      min-height: 200px;
+    }
+
+    .chat-panel .reply-section {
+      margin-top: 18px;
+    }
+
+    @media (max-width: 900px) {
+      .page-layout.chat-active {
+        grid-template-columns: 1fr;
+      }
+    }
+
     .card {
       background: #242424;
       border: 1px solid #333;
@@ -293,11 +343,8 @@
 
     /* ---- output ---- */
     .output-section {
-      margin-top: 28px;
-      display: none;
+      margin-top: 0;
     }
-
-    .output-section.visible { display: block; }
 
     .output-header {
       display: flex;
@@ -370,11 +417,8 @@
 
     /* ---- reply / chat ---- */
     .reply-section {
-      display: none;
       margin-top: 18px;
     }
-
-    .reply-section.visible { display: block; }
 
     .reply-row {
       display: flex;
@@ -456,127 +500,131 @@
     <p>Describe your plugin and let Claude scaffold the Lua files.</p>
   </header>
 
-  <div class="card">
-    <form id="pluginForm">
-
-      <!-- Phase 1: Name + Description -->
-      <div class="form-group">
-        <label for="pluginName">Plugin Name</label>
-        <input type="text" id="pluginName" placeholder="e.g. Sony VPL Projector" required>
+  <div class="page-layout" id="pageLayout">
+    <div class="chat-panel" id="chatPanel">
+      <div class="output-section" id="outputSection">
+        <div class="output-header">
+          <span>Generated Output</span>
+          <div class="output-header-buttons">
+            <button class="btn-download" id="downloadBtn">Download ZIP</button>
+            <button class="btn-copy" id="copyBtn">Copy</button>
+          </div>
+        </div>
+        <div id="chatHistory"></div>
       </div>
 
-      <div class="form-group">
-        <label for="description">Plugin Description</label>
-        <textarea
-          id="description"
-          placeholder="Describe what the plugin does and what device it controls. E.g. 'Control a Sony projector — power, input select, and volume over TCP.'"
-          required
-        ></textarea>
+      <div class="reply-section" id="replySection">
+        <div class="reply-row">
+          <textarea class="reply-input" id="replyInput" placeholder="Type your reply..." rows="1"></textarea>
+          <button class="btn-send" id="sendBtn">Send</button>
+        </div>
       </div>
+    </div>
 
-      <button type="button" class="btn-continue" id="continueBtn" disabled>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M3 7h8M7.5 3.5L11 7l-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        Continue
-      </button>
+    <div class="card">
+      <form id="pluginForm">
 
-      <!-- Phase 2: Everything else -->
-      <div class="phase2" id="phase2">
-        <hr class="phase-divider">
-
-        <div class="row-2">
-          <div class="form-group" style="margin-bottom:0">
-            <label for="protocol">Protocol</label>
-            <select id="protocol">
-              <option value="TCP">TCP</option>
-              <option value="UDP">UDP</option>
-              <option value="Serial">Serial</option>
-              <option value="HTTP">HTTP</option>
-              <option value="SSH">SSH</option>
-              <option value="None">None</option>
-            </select>
-          </div>
-
-          <div class="form-group" style="margin-bottom:0">
-            <label for="connection">Connection Details</label>
-            <input type="text" id="connection" placeholder="Port, baud rate, default IP…">
-          </div>
+        <!-- Phase 1: Name + Description -->
+        <div class="form-group">
+          <label for="pluginName">Plugin Name</label>
+          <input type="text" id="pluginName" placeholder="e.g. Sony VPL Projector" required>
         </div>
 
         <div class="form-group">
-          <label>API / Protocol Document <span style="font-weight:400;color:#555;text-transform:none;letter-spacing:0">(optional)</span></label>
+          <label for="description">Plugin Description</label>
+          <textarea
+            id="description"
+            placeholder="Describe what the plugin does and what device it controls. E.g. 'Control a Sony projector — power, input select, and volume over TCP.'"
+            required
+          ></textarea>
+        </div>
 
-          <div class="tab-bar">
-            <button type="button" class="tab-btn active" data-tab="url">URL</button>
-            <button type="button" class="tab-btn" data-tab="file">File</button>
+        <button type="button" class="btn-continue" id="continueBtn" disabled>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 7h8M7.5 3.5L11 7l-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Continue
+        </button>
+
+        <!-- Phase 2: Everything else -->
+        <div class="phase2" id="phase2">
+          <hr class="phase-divider">
+
+          <div class="row-2">
+            <div class="form-group" style="margin-bottom:0">
+              <label for="protocol">Protocol</label>
+              <select id="protocol">
+                <option value="TCP">TCP</option>
+                <option value="UDP">UDP</option>
+                <option value="Serial">Serial</option>
+                <option value="HTTP">HTTP</option>
+                <option value="SSH">SSH</option>
+                <option value="None">None</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom:0">
+              <label for="connection">Connection Details</label>
+              <input type="text" id="connection" placeholder="Port, baud rate, default IP…">
+            </div>
           </div>
 
-          <!-- URL tab -->
-          <div class="tab-panel active" id="tab-url">
-            <input type="text" id="apiUrl" placeholder="https://manufacturer.com/protocol-guide.pdf">
-          </div>
+          <div class="form-group">
+            <label>API / Protocol Document <span style="font-weight:400;color:#555;text-transform:none;letter-spacing:0">(optional)</span></label>
 
-          <!-- File tab -->
-          <div class="tab-panel" id="tab-file">
-            <div class="file-drop" id="fileDrop">
-              <input type="file" id="apiFile" accept=".pdf,.txt,.md,.json,.csv,.xml">
-              <div class="file-drop-icon">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                  <line x1="12" y1="18" x2="12" y2="12"/>
-                  <line x1="9" y1="15" x2="15" y2="15"/>
-                </svg>
+            <div class="tab-bar">
+              <button type="button" class="tab-btn active" data-tab="url">URL</button>
+              <button type="button" class="tab-btn" data-tab="file">File</button>
+            </div>
+
+            <!-- URL tab -->
+            <div class="tab-panel active" id="tab-url">
+              <input type="text" id="apiUrl" placeholder="https://manufacturer.com/protocol-guide.pdf">
+            </div>
+
+            <!-- File tab -->
+            <div class="tab-panel" id="tab-file">
+              <div class="file-drop" id="fileDrop">
+                <input type="file" id="apiFile" accept=".pdf,.txt,.md,.json,.csv,.xml">
+                <div class="file-drop-icon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="12" y1="18" x2="12" y2="12"/>
+                    <line x1="9" y1="15" x2="15" y2="15"/>
+                  </svg>
+                </div>
+                <p>Drop a file here or <span>browse</span></p>
+                <p class="file-hint">.pdf · .txt · .md · .json · .csv · .xml</p>
               </div>
-              <p>Drop a file here or <span>browse</span></p>
-              <p class="file-hint">.pdf · .txt · .md · .json · .csv · .xml</p>
-            </div>
-            <div class="file-name" id="fileName">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              <span id="fileNameText"></span>
-              <button type="button" id="clearFile" title="Remove file">✕</button>
+              <div class="file-name" id="fileName">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <span id="fileNameText"></span>
+                <button type="button" id="clearFile" title="Remove file">✕</button>
+              </div>
             </div>
           </div>
+
+          <div class="form-group" style="margin-bottom:16px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.88rem;color:#aaa">
+              <input type="checkbox" id="webSearch" style="width:16px;height:16px;accent-color:#4a9eff;cursor:pointer">
+              Search the web for device protocol documentation
+            </label>
+          </div>
+
+          <button type="submit" class="btn-generate" id="generateBtn">Generate Plugin</button>
         </div>
 
-        <div class="form-group" style="margin-bottom:16px">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.88rem;color:#aaa">
-            <input type="checkbox" id="webSearch" style="width:16px;height:16px;accent-color:#4a9eff;cursor:pointer">
-            Search the web for device protocol documentation
-          </label>
-        </div>
+      </form>
 
-        <button type="submit" class="btn-generate" id="generateBtn">Generate Plugin</button>
+      <div class="spinner" id="spinner">
+        <div class="spinner-ring"></div>
+        <span>Generating plugin files — this may take a moment…</span>
       </div>
 
-    </form>
-
-    <div class="spinner" id="spinner">
-      <div class="spinner-ring"></div>
-      <span>Generating plugin files — this may take a moment…</span>
-    </div>
-
-    <div class="error-msg" id="errorMsg"></div>
-
-    <div class="output-section" id="outputSection">
-      <div class="output-header">
-        <span>Generated Output</span>
-        <div class="output-header-buttons">
-          <button class="btn-download" id="downloadBtn">Download ZIP</button>
-          <button class="btn-copy" id="copyBtn">Copy</button>
-        </div>
-      </div>
-      <div id="chatHistory"></div>
-    </div>
-
-    <div class="reply-section" id="replySection">
-      <div class="reply-row">
-        <textarea class="reply-input" id="replyInput" placeholder="Type your reply..." rows="1"></textarea>
-        <button class="btn-send" id="sendBtn">Send</button>
-      </div>
+      <div class="error-msg" id="errorMsg"></div>
     </div>
   </div>
 
@@ -659,6 +707,7 @@
     const replyInput    = document.getElementById('replyInput');
     const sendBtn       = document.getElementById('sendBtn');
     const downloadBtn   = document.getElementById('downloadBtn');
+    const pageLayout    = document.getElementById('pageLayout');
 
     let conversationId = null;
 
@@ -697,8 +746,7 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
-      outputSection.classList.remove('visible');
-      replySection.classList.remove('visible');
+      pageLayout.classList.remove('chat-active');
       errorMsg.classList.remove('visible');
       downloadBtn.classList.remove('visible');
       chatHistory.innerHTML = '';
@@ -735,8 +783,7 @@
         conversationId = data.conversation_id;
         addChatMessage('assistant', data.result);
         checkForFiles(data.result);
-        outputSection.classList.add('visible');
-        replySection.classList.add('visible');
+        pageLayout.classList.add('chat-active');
         replyInput.focus();
 
       } catch (err) {
