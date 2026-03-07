@@ -6,6 +6,8 @@ from anthropic import RateLimitError
 
 load_dotenv()
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 app = Flask(__name__, static_folder="static")
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(32).hex())
 client = Anthropic()
@@ -105,8 +107,9 @@ def handle_sdk_tool(topic):
         return f"Unknown topic: {topic}"
     sections = []
     for path in files:
-        if os.path.isfile(path):
-            with open(path, "r", encoding="utf-8") as f:
+        full_path = os.path.join(BASE_DIR, path)
+        if os.path.isfile(full_path):
+            with open(full_path, "r", encoding="utf-8") as f:
                 sections.append(f"### {os.path.basename(path)}\n\n{f.read()}")
     return "\n\n---\n\n".join(sections) if sections else f"No documentation found for topic: {topic}"
 
@@ -167,8 +170,8 @@ def call_claude(messages, system_prompt, tools, max_retries=3):
 
 
 def load_system_prompt(protocol=""):
-    claude_md = open("prompts/CLAUDE.md").read()
-    skill_md = open("prompts/SKILL.md").read()
+    claude_md = open(os.path.join(BASE_DIR, "prompts/CLAUDE.md")).read()
+    skill_md = open(os.path.join(BASE_DIR, "prompts/SKILL.md")).read()
 
     sdk_topics_note = (
         "# SDK Reference Documentation\n\n"
