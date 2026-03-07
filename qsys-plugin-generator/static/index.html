@@ -7,20 +7,24 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
     body {
       font-family: 'Segoe UI', system-ui, sans-serif;
       background: #1a1a1a;
       color: #e0e0e0;
-      min-height: 100vh;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      padding: 32px 16px 64px;
+      height: 100vh;
     }
 
     header {
       text-align: center;
-      margin-bottom: 32px;
+      padding: 20px 16px 16px;
+      flex-shrink: 0;
     }
 
     header h1 {
@@ -38,26 +42,29 @@
 
     /* ---- page layout ---- */
     .page-layout {
-      width: 100%;
-      max-width: 720px;
-      transition: max-width 0.5s ease;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      justify-content: center;
+      padding: 0 16px 16px;
     }
 
     .page-layout.chat-active {
-      max-width: 1480px;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 720px);
-      gap: 24px;
+      grid-template-columns: minmax(0, 720px) minmax(0, 1fr);
+      gap: 16px;
+      padding: 0 16px 16px;
     }
 
     .chat-panel {
       background: #242424;
       border: 1px solid #333;
       border-radius: 12px;
-      padding: 28px;
+      padding: 20px;
       display: none;
       flex-direction: column;
       min-height: 0;
+      overflow: hidden;
     }
 
     .page-layout.chat-active .chat-panel {
@@ -73,16 +80,18 @@
 
     .chat-panel .output-section #chatHistory {
       flex: 1;
-      min-height: 200px;
+      min-height: 0;
     }
 
     .chat-panel .reply-section {
-      margin-top: 18px;
+      margin-top: 12px;
+      flex-shrink: 0;
     }
 
     @media (max-width: 900px) {
       .page-layout.chat-active {
         grid-template-columns: 1fr;
+        grid-template-rows: 1fr 1fr;
       }
     }
 
@@ -93,6 +102,13 @@
       padding: 28px;
       width: 100%;
       max-width: 720px;
+      overflow-y: auto;
+      align-self: flex-start;
+    }
+
+    .page-layout.chat-active .card {
+      max-width: none;
+      height: 100%;
     }
 
     /* ---- form fields ---- */
@@ -397,7 +413,6 @@
     }
 
     #chatHistory {
-      max-height: 600px;
       overflow-y: auto;
     }
 
@@ -501,26 +516,6 @@
   </header>
 
   <div class="page-layout" id="pageLayout">
-    <div class="chat-panel" id="chatPanel">
-      <div class="output-section" id="outputSection">
-        <div class="output-header">
-          <span>Generated Output</span>
-          <div class="output-header-buttons">
-            <button class="btn-download" id="downloadBtn">Download ZIP</button>
-            <button class="btn-copy" id="copyBtn">Copy</button>
-          </div>
-        </div>
-        <div id="chatHistory"></div>
-      </div>
-
-      <div class="reply-section" id="replySection">
-        <div class="reply-row">
-          <textarea class="reply-input" id="replyInput" placeholder="Type your reply..." rows="1"></textarea>
-          <button class="btn-send" id="sendBtn">Send</button>
-        </div>
-      </div>
-    </div>
-
     <div class="card">
       <form id="pluginForm">
 
@@ -625,6 +620,26 @@
       </div>
 
       <div class="error-msg" id="errorMsg"></div>
+    </div>
+
+    <div class="chat-panel" id="chatPanel">
+      <div class="output-section" id="outputSection">
+        <div class="output-header">
+          <span>Generated Output</span>
+          <div class="output-header-buttons">
+            <button class="btn-download" id="downloadBtn">Download ZIP</button>
+            <button class="btn-copy" id="copyBtn">Copy</button>
+          </div>
+        </div>
+        <div id="chatHistory"></div>
+      </div>
+
+      <div class="reply-section" id="replySection">
+        <div class="reply-row">
+          <textarea class="reply-input" id="replyInput" placeholder="Type your reply..." rows="1"></textarea>
+          <button class="btn-send" id="sendBtn">Send</button>
+        </div>
+      </div>
     </div>
   </div>
 
