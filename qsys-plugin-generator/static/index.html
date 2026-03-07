@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Q-SYS Plugin Generator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px 64px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    header h1 {
+      font-size: 1.8rem;
+      font-weight: 600;
+      color: #ffffff;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      margin-top: 6px;
+      color: #888;
+      font-size: 0.9rem;
+    }
+
+    .card {
+      background: #242424;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 28px;
+      width: 100%;
+      max-width: 720px;
+    }
+
+    /* ---- form fields ---- */
+    .form-group { margin-bottom: 22px; }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+    }
+
+    textarea, input[type="text"], select {
+      width: 100%;
+      background: #1a1a1a;
+      border: 1px solid #3a3a3a;
+      border-radius: 7px;
+      color: #e0e0e0;
+      font-family: inherit;
+      font-size: 0.93rem;
+      padding: 10px 13px;
+      outline: none;
+      transition: border-color 0.15s;
+      resize: vertical;
+    }
+
+    textarea:focus, input[type="text"]:focus, select:focus {
+      border-color: #4a9eff;
+    }
+
+    #description { min-height: 110px; }
+
+    select {
+      cursor: pointer;
+      appearance: none;
+      resize: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+
+    select option { background: #2a2a2a; }
+
+    /* two-column row */
+    .row-2 {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    /* ---- continue button ---- */
+    .btn-continue {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: none;
+      border: 1px solid #3a3a3a;
+      color: #aaa;
+      border-radius: 7px;
+      padding: 9px 18px;
+      font-size: 0.88rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+      margin-top: 4px;
+    }
+
+    .btn-continue:hover:not(:disabled) {
+      border-color: #4a9eff;
+      color: #4a9eff;
+      background: rgba(74,158,255,0.06);
+    }
+
+    .btn-continue:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .btn-continue svg { flex-shrink: 0; }
+
+    /* ---- phase 2 reveal ---- */
+    .phase2 {
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      transition: max-height 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                  opacity 0.35s ease;
+    }
+
+    .phase2.revealed {
+      max-height: 900px;
+      opacity: 1;
+    }
+
+    .phase-divider {
+      border: none;
+      border-top: 1px solid #2e2e2e;
+      margin: 22px 0;
+    }
+
+    /* ---- API doc tabs ---- */
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+
+    .tab-btn {
+      background: none;
+      border: 1px solid #3a3a3a;
+      color: #888;
+      border-radius: 6px;
+      padding: 6px 16px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+
+    .tab-btn.active {
+      background: #2a2a2a;
+      color: #e0e0e0;
+      border-color: #555;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ---- file drop zone ---- */
+    .file-drop {
+      border: 1px dashed #3a3a3a;
+      border-radius: 7px;
+      padding: 28px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+
+    .file-drop:hover, .file-drop.dragover {
+      border-color: #4a9eff;
+      background: rgba(74,158,255,0.04);
+    }
+
+    .file-drop input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .file-drop-icon {
+      color: #555;
+      margin-bottom: 10px;
+    }
+
+    .file-drop p {
+      color: #888;
+      font-size: 0.88rem;
+    }
+
+    .file-drop p span {
+      color: #4a9eff;
+    }
+
+    .file-drop .file-hint {
+      font-size: 0.76rem;
+      color: #555;
+      margin-top: 4px;
+    }
+
+    .file-name {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      background: #1e2a1e;
+      border: 1px solid #2e4a2e;
+      border-radius: 6px;
+      padding: 8px 13px;
+      margin-top: 10px;
+      font-size: 0.85rem;
+      color: #6ee67b;
+    }
+
+    .file-name.visible { display: flex; }
+
+    .file-name button {
+      background: none;
+      border: none;
+      color: #555;
+      cursor: pointer;
+      padding: 0;
+      font-size: 1rem;
+      line-height: 1;
+      margin-left: auto;
+      transition: color 0.12s;
+    }
+
+    .file-name button:hover { color: #e0e0e0; }
+
+    /* ---- generate button ---- */
+    .btn-generate {
+      width: 100%;
+      padding: 13px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.97rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      margin-top: 6px;
+    }
+
+    .btn-generate:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-generate:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ---- spinner ---- */
+    .spinner {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      color: #888;
+      font-size: 0.88rem;
+      margin-top: 20px;
+    }
+
+    .spinner.active { display: flex; }
+
+    .spinner-ring {
+      width: 18px;
+      height: 18px;
+      border: 2px solid #333;
+      border-top-color: #4a9eff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- output ---- */
+    .output-section {
+      margin-top: 28px;
+      display: none;
+    }
+
+    .output-section.visible { display: block; }
+
+    .output-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .output-header span {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .btn-copy {
+      background: #2d2d2d;
+      border: 1px solid #3a3a3a;
+      color: #aaa;
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .btn-copy:hover { background: #383838; color: #e0e0e0; }
+    .btn-copy.copied { color: #4ade80; border-color: #4ade80; }
+
+    .btn-download {
+      background: #1e3a1e;
+      border: 1px solid #2e5a2e;
+      color: #6ee67b;
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      display: none;
+    }
+
+    .btn-download.visible { display: inline-block; }
+    .btn-download:hover { background: #2a4a2a; color: #8fff8f; }
+    .btn-download:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .output-header-buttons {
+      display: flex;
+      gap: 6px;
+    }
+
+    #chatHistory {
+      max-height: 600px;
+      overflow-y: auto;
+    }
+
+    /* ---- error ---- */
+    .error-msg {
+      color: #f87171;
+      background: #2d1414;
+      border: 1px solid #5c2020;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.88rem;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .error-msg.visible { display: block; }
+
+    /* ---- reply / chat ---- */
+    .reply-section {
+      display: none;
+      margin-top: 18px;
+    }
+
+    .reply-section.visible { display: block; }
+
+    .reply-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .reply-input {
+      flex: 1;
+      background: #1a1a1a;
+      border: 1px solid #3a3a3a;
+      border-radius: 7px;
+      color: #e0e0e0;
+      font-family: inherit;
+      font-size: 0.93rem;
+      padding: 10px 13px;
+      outline: none;
+      transition: border-color 0.15s;
+      resize: none;
+      min-height: 44px;
+      max-height: 120px;
+    }
+
+    .reply-input:focus { border-color: #4a9eff; }
+
+    .btn-send {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      padding: 10px 18px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      white-space: nowrap;
+      align-self: flex-end;
+    }
+
+    .btn-send:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-send:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* chat message bubbles */
+    .chat-msg {
+      padding: 14px 18px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin-top: 10px;
+    }
+
+    .chat-msg.user {
+      background: #1a2a3a;
+      border: 1px solid #2a3a4a;
+      color: #8ac4ff;
+    }
+
+    .chat-msg.assistant {
+      background: #111;
+      border: 1px solid #333;
+      color: #d4d4d4;
+    }
+
+    .chat-msg-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Q-SYS Plugin Generator</h1>
+    <p>Describe your plugin and let Claude scaffold the Lua files.</p>
+  </header>
+
+  <div class="card">
+    <form id="pluginForm">
+
+      <!-- Phase 1: Name + Description -->
+      <div class="form-group">
+        <label for="pluginName">Plugin Name</label>
+        <input type="text" id="pluginName" placeholder="e.g. Sony VPL Projector" required>
+      </div>
+
+      <div class="form-group">
+        <label for="description">Plugin Description</label>
+        <textarea
+          id="description"
+          placeholder="Describe what the plugin does and what device it controls. E.g. 'Control a Sony projector — power, input select, and volume over TCP.'"
+          required
+        ></textarea>
+      </div>
+
+      <button type="button" class="btn-continue" id="continueBtn" disabled>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M3 7h8M7.5 3.5L11 7l-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Continue
+      </button>
+
+      <!-- Phase 2: Everything else -->
+      <div class="phase2" id="phase2">
+        <hr class="phase-divider">
+
+        <div class="row-2">
+          <div class="form-group" style="margin-bottom:0">
+            <label for="protocol">Protocol</label>
+            <select id="protocol">
+              <option value="TCP">TCP</option>
+              <option value="UDP">UDP</option>
+              <option value="Serial">Serial</option>
+              <option value="HTTP">HTTP</option>
+              <option value="SSH">SSH</option>
+              <option value="None">None</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0">
+            <label for="connection">Connection Details</label>
+            <input type="text" id="connection" placeholder="Port, baud rate, default IP…">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>API / Protocol Document <span style="font-weight:400;color:#555;text-transform:none;letter-spacing:0">(optional)</span></label>
+
+          <div class="tab-bar">
+            <button type="button" class="tab-btn active" data-tab="url">URL</button>
+            <button type="button" class="tab-btn" data-tab="file">File</button>
+          </div>
+
+          <!-- URL tab -->
+          <div class="tab-panel active" id="tab-url">
+            <input type="text" id="apiUrl" placeholder="https://manufacturer.com/protocol-guide.pdf">
+          </div>
+
+          <!-- File tab -->
+          <div class="tab-panel" id="tab-file">
+            <div class="file-drop" id="fileDrop">
+              <input type="file" id="apiFile" accept=".pdf,.txt,.md,.json,.csv,.xml">
+              <div class="file-drop-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="12" y1="18" x2="12" y2="12"/>
+                  <line x1="9" y1="15" x2="15" y2="15"/>
+                </svg>
+              </div>
+              <p>Drop a file here or <span>browse</span></p>
+              <p class="file-hint">.pdf · .txt · .md · .json · .csv · .xml</p>
+            </div>
+            <div class="file-name" id="fileName">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <span id="fileNameText"></span>
+              <button type="button" id="clearFile" title="Remove file">✕</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:16px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.88rem;color:#aaa">
+            <input type="checkbox" id="webSearch" style="width:16px;height:16px;accent-color:#4a9eff;cursor:pointer">
+            Search the web for device protocol documentation
+          </label>
+        </div>
+
+        <button type="submit" class="btn-generate" id="generateBtn">Generate Plugin</button>
+      </div>
+
+    </form>
+
+    <div class="spinner" id="spinner">
+      <div class="spinner-ring"></div>
+      <span>Generating plugin files — this may take a moment…</span>
+    </div>
+
+    <div class="error-msg" id="errorMsg"></div>
+
+    <div class="output-section" id="outputSection">
+      <div class="output-header">
+        <span>Generated Output</span>
+        <div class="output-header-buttons">
+          <button class="btn-download" id="downloadBtn">Download ZIP</button>
+          <button class="btn-copy" id="copyBtn">Copy</button>
+        </div>
+      </div>
+      <div id="chatHistory"></div>
+    </div>
+
+    <div class="reply-section" id="replySection">
+      <div class="reply-row">
+        <textarea class="reply-input" id="replyInput" placeholder="Type your reply..." rows="1"></textarea>
+        <button class="btn-send" id="sendBtn">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Progressive reveal ---
+    const pluginNameEl  = document.getElementById('pluginName');
+    const descriptionEl = document.getElementById('description');
+    const continueBtn   = document.getElementById('continueBtn');
+    const phase2        = document.getElementById('phase2');
+    let phase2Open = false;
+
+    function updateContinueBtn() {
+      continueBtn.disabled = descriptionEl.value.trim().length === 0 || pluginNameEl.value.trim().length === 0;
+    }
+
+    descriptionEl.addEventListener('input', updateContinueBtn);
+    pluginNameEl.addEventListener('input', updateContinueBtn);
+
+    continueBtn.addEventListener('click', () => {
+      if (phase2Open) return;
+      phase2Open = true;
+      phase2.classList.add('revealed');
+      continueBtn.style.display = 'none';
+    });
+
+    // --- Tab switching ---
+    let activeTab = 'url';
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        activeTab = btn.dataset.tab;
+        document.getElementById('tab-' + activeTab).classList.add('active');
+      });
+    });
+
+    // --- File drop zone ---
+    const fileDrop    = document.getElementById('fileDrop');
+    const apiFileEl   = document.getElementById('apiFile');
+    const fileNameEl  = document.getElementById('fileName');
+    const fileNameTxt = document.getElementById('fileNameText');
+    const clearFile   = document.getElementById('clearFile');
+
+    ['dragenter','dragover'].forEach(evt =>
+      fileDrop.addEventListener(evt, e => { e.preventDefault(); fileDrop.classList.add('dragover'); })
+    );
+    ['dragleave','drop'].forEach(evt =>
+      fileDrop.addEventListener(evt, e => { e.preventDefault(); fileDrop.classList.remove('dragover'); })
+    );
+    fileDrop.addEventListener('drop', e => {
+      if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+    });
+
+    apiFileEl.addEventListener('change', () => {
+      if (apiFileEl.files.length) setFile(apiFileEl.files[0]);
+    });
+
+    function setFile(file) {
+      fileNameTxt.textContent = file.name;
+      fileNameEl.classList.add('visible');
+    }
+
+    clearFile.addEventListener('click', () => {
+      apiFileEl.value = '';
+      fileNameEl.classList.remove('visible');
+      fileNameTxt.textContent = '';
+    });
+
+    // --- Form submit ---
+    const form          = document.getElementById('pluginForm');
+    const generateBtn   = document.getElementById('generateBtn');
+    const spinner       = document.getElementById('spinner');
+    const outputSection = document.getElementById('outputSection');
+    const chatHistory   = document.getElementById('chatHistory');
+    const errorMsg      = document.getElementById('errorMsg');
+    const copyBtn       = document.getElementById('copyBtn');
+    const replySection  = document.getElementById('replySection');
+    const replyInput    = document.getElementById('replyInput');
+    const sendBtn       = document.getElementById('sendBtn');
+    const downloadBtn   = document.getElementById('downloadBtn');
+
+    let conversationId = null;
+
+    // Check if any assistant messages contain filename: code blocks
+    function checkForFiles(text) {
+      if (/```(?:\w+\s+)?filename:/m.test(text)) {
+        downloadBtn.classList.add('visible');
+      }
+    }
+
+    function stripCodeBlocks(text) {
+      // Remove fenced code blocks (``` ... ```) and collapse extra blank lines
+      return text.replace(/```[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    function addChatMessage(role, text) {
+      const wrapper = document.createElement('div');
+      wrapper.className = `chat-msg ${role}`;
+      const label = document.createElement('div');
+      label.className = 'chat-msg-label';
+      label.textContent = role === 'user' ? 'You' : 'Assistant';
+      const body = document.createElement('div');
+      body.textContent = role === 'assistant' ? stripCodeBlocks(text) : text;
+      wrapper.appendChild(label);
+      wrapper.appendChild(body);
+      chatHistory.appendChild(wrapper);
+      wrapper.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+
+    function getLastAssistantText() {
+      const msgs = chatHistory.querySelectorAll('.chat-msg.assistant div:last-child');
+      if (msgs.length === 0) return '';
+      return msgs[msgs.length - 1].textContent;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      outputSection.classList.remove('visible');
+      replySection.classList.remove('visible');
+      errorMsg.classList.remove('visible');
+      downloadBtn.classList.remove('visible');
+      chatHistory.innerHTML = '';
+      conversationId = null;
+      spinner.classList.add('active');
+      generateBtn.disabled = true;
+
+      const fd = new FormData();
+      fd.append('plugin_name', pluginNameEl.value.trim());
+      fd.append('description', descriptionEl.value.trim());
+      fd.append('protocol', document.getElementById('protocol').value);
+      fd.append('connection', document.getElementById('connection').value.trim());
+
+      if (document.getElementById('webSearch').checked) {
+        fd.append('web_search', 'on');
+      }
+
+      if (activeTab === 'url') {
+        fd.append('api_doc_url', document.getElementById('apiUrl').value.trim());
+      } else {
+        const file = apiFileEl.files[0];
+        if (file) fd.append('api_doc_file', file);
+      }
+
+      try {
+        const res = await fetch('/generate', { method: 'POST', body: fd });
+
+        if (!res.ok) {
+          const json = await res.json().catch(() => null);
+          throw new Error(json?.error || `Server error ${res.status}`);
+        }
+
+        const data = await res.json();
+        conversationId = data.conversation_id;
+        addChatMessage('assistant', data.result);
+        checkForFiles(data.result);
+        outputSection.classList.add('visible');
+        replySection.classList.add('visible');
+        replyInput.focus();
+
+      } catch (err) {
+        errorMsg.textContent = err.message || 'An unexpected error occurred.';
+        errorMsg.classList.add('visible');
+      } finally {
+        spinner.classList.remove('active');
+        generateBtn.disabled = false;
+      }
+    });
+
+    // --- Reply ---
+    async function sendReply() {
+      const text = replyInput.value.trim();
+      if (!text || !conversationId) return;
+
+      addChatMessage('user', text);
+      replyInput.value = '';
+      sendBtn.disabled = true;
+      spinner.classList.add('active');
+
+      try {
+        const res = await fetch('/reply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversation_id: conversationId, message: text }),
+        });
+
+        if (!res.ok) {
+          const json = await res.json().catch(() => null);
+          throw new Error(json?.error || `Server error ${res.status}`);
+        }
+
+        const data = await res.json();
+        addChatMessage('assistant', data.result);
+        checkForFiles(data.result);
+
+      } catch (err) {
+        errorMsg.textContent = err.message || 'An unexpected error occurred.';
+        errorMsg.classList.add('visible');
+      } finally {
+        spinner.classList.remove('active');
+        sendBtn.disabled = false;
+        replyInput.focus();
+      }
+    }
+
+    sendBtn.addEventListener('click', sendReply);
+
+    replyInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendReply();
+      }
+    });
+
+    // --- Download ZIP ---
+    downloadBtn.addEventListener('click', async () => {
+      if (!conversationId) return;
+      downloadBtn.disabled = true;
+      try {
+        const pName = pluginNameEl.value.trim();
+        const res = await fetch('/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversation_id: conversationId, plugin_name: pName }),
+        });
+        if (!res.ok) {
+          const json = await res.json().catch(() => null);
+          throw new Error(json?.error || `Server error ${res.status}`);
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const safeName = pName.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-') || 'plugin';
+        a.download = safeName + '.zip';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        errorMsg.textContent = err.message || 'Download failed.';
+        errorMsg.classList.add('visible');
+      } finally {
+        downloadBtn.disabled = false;
+      }
+    });
+
+    // --- Copy (copies last assistant message) ---
+    copyBtn.addEventListener('click', () => {
+      const text = getLastAssistantText();
+      navigator.clipboard.writeText(text).then(() => {
+        copyBtn.textContent = 'Copied!';
+        copyBtn.classList.add('copied');
+        setTimeout(() => {
+          copyBtn.textContent = 'Copy';
+          copyBtn.classList.remove('copied');
+        }, 2000);
+      });
+    });
+  </script>
+
+</body>
+</html>
