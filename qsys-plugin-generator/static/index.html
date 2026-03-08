@@ -333,6 +333,24 @@
     .btn-generate:hover:not(:disabled) { background: #1d4ed8; }
     .btn-generate:disabled { opacity: 0.45; cursor: not-allowed; }
 
+    .btn-new-plugin {
+      width: 100%;
+      padding: 13px;
+      background: none;
+      color: #aaa;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      font-size: 0.97rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+      margin-top: 12px;
+      display: none;
+    }
+
+    .btn-new-plugin.visible { display: block; }
+    .btn-new-plugin:hover { border-color: #4a9eff; color: #4a9eff; background: rgba(74,158,255,0.06); }
+
     /* ---- spinner ---- */
     .spinner {
       display: none;
@@ -620,6 +638,7 @@
       </div>
 
       <div class="error-msg" id="errorMsg"></div>
+      <button type="button" class="btn-new-plugin" id="newPluginBtn">+ Create New Plugin</button>
     </div>
 
     <div class="chat-panel" id="chatPanel">
@@ -723,6 +742,7 @@
     const sendBtn       = document.getElementById('sendBtn');
     const downloadBtn   = document.getElementById('downloadBtn');
     const pageLayout    = document.getElementById('pageLayout');
+    const newPluginBtn  = document.getElementById('newPluginBtn');
 
     let conversationId = null;
 
@@ -764,6 +784,7 @@
       pageLayout.classList.remove('chat-active');
       errorMsg.classList.remove('visible');
       downloadBtn.classList.remove('visible');
+      newPluginBtn.classList.remove('visible');
       chatHistory.innerHTML = '';
       conversationId = null;
       spinner.classList.add('active');
@@ -799,6 +820,7 @@
         addChatMessage('assistant', data.result);
         checkForFiles(data.result);
         pageLayout.classList.add('chat-active');
+        newPluginBtn.classList.add('visible');
         replyInput.focus();
 
       } catch (err) {
@@ -899,6 +921,34 @@
           copyBtn.classList.remove('copied');
         }, 2000);
       });
+    });
+
+    // --- New Plugin ---
+    newPluginBtn.addEventListener('click', () => {
+      pageLayout.classList.remove('chat-active');
+      newPluginBtn.classList.remove('visible');
+      downloadBtn.classList.remove('visible');
+      errorMsg.classList.remove('visible');
+      chatHistory.innerHTML = '';
+      conversationId = null;
+
+      // Reset form
+      form.reset();
+      phase2.classList.remove('revealed');
+      phase2Open = false;
+      continueBtn.style.display = '';
+      continueBtn.disabled = true;
+      fileNameEl.classList.remove('visible');
+      fileNameTxt.textContent = '';
+
+      // Reset tabs to URL
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelector('.tab-btn[data-tab="url"]').classList.add('active');
+      document.getElementById('tab-url').classList.add('active');
+      activeTab = 'url';
+
+      pluginNameEl.focus();
     });
   </script>
 
