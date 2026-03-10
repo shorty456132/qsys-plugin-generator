@@ -49,6 +49,18 @@ SDK_REFERENCE_TOOL = {
                     "style_guide",
                     "reserved_controls",
                     "building_a_plugin",
+                    "crypto",
+                    "json_parsing",
+                    "xml_parsing",
+                    "timer",
+                    "controls_io",
+                    "notifications",
+                    "system",
+                    "log",
+                    "hex_data",
+                    "named_components",
+                    "dynamic_pages",
+                    "storing_secrets",
                 ],
             }
         },
@@ -61,20 +73,25 @@ SDK_TOPIC_FILES = {
     "tcp": [
         "documents/SDK Help/Recommended_Practices-TCP.md",
         "documents/SDK Help/Code_Examples-TCPSocket_Example.md",
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-TcpSocket.md",
     ],
     "udp": [
         "documents/SDK Help/Recommended_Practices-UDP.md",
         "documents/SDK Help/Code_Examples-UDPSocket_Example.md",
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-UdpSocket.md",
     ],
     "serial": [
         "documents/SDK Help/Recommended_Practices-Serial.md",
         "documents/SDK Help/Code_Examples-SerialPort.md",
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-SerialPorts.md",
     ],
     "http": [
         "documents/SDK Help/Code_Examples-HTTPClient.md",
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-HttpClient.md",
     ],
     "ssh": [
         "documents/SDK Help/Code_Examples-SSH_Example.md",
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-Ssh.md",
     ],
     "plugin_framework": [
         "documents/SDK Help/Code_Examples-Basic_Plugin_Framework.md",
@@ -96,6 +113,49 @@ SDK_TOPIC_FILES = {
     ],
     "building_a_plugin": [
         "documents/SDK Help/Getting_Started-Building_a_Plugin.md",
+    ],
+    "crypto": [
+        "documents/SDK Help/Code_Examples-Crypto_Example.md",
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-Crypto.md",
+    ],
+    "json_parsing": [
+        "documents/SDK Help/Code_Examples-JSON_Example.md",
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-JSON.md",
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-RapidJSON.md",
+    ],
+    "xml_parsing": [
+        "documents/SDK Help/Code_Examples-XML_Example.md",
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-LuaXML.md",
+    ],
+    "timer": [
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-Timer.md",
+    ],
+    "controls_io": [
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-Controls_IO.md",
+    ],
+    "notifications": [
+        "documents/SDK Help/Code_Examples-Notifications_Example.md",
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-Notifications.md",
+    ],
+    "system": [
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-System.md",
+    ],
+    "log": [
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-Log.md",
+    ],
+    "hex_data": [
+        "documents/SDK Help/Code_Examples-Hex_Data_Handling.md",
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-Lua_Bitstring.md",
+    ],
+    "named_components": [
+        "documents/SDK Help/Code_Examples-Named_Components_Example.md",
+        "documents/General Help/Control_Scripting-Using_Lua_in_Q-Sys-Component.md",
+    ],
+    "dynamic_pages": [
+        "documents/SDK Help/Code_Examples-Dynamic_Pages.md",
+    ],
+    "storing_secrets": [
+        "documents/SDK Help/Code_Examples-Storing_Secrets_in_Plugins.md",
     ],
 }
 
@@ -177,19 +237,37 @@ def load_system_prompt(protocol=""):
         "# SDK Reference Documentation\n\n"
         "You have access to a `get_sdk_reference` tool to retrieve detailed Q-SYS SDK documentation on demand. "
         "Use it to look up specific topics when you need detailed API references or code examples.\n\n"
-        "Available topics:\n"
-        "- `tcp` — TCP socket recommended practices and examples\n"
-        "- `udp` — UDP socket recommended practices and examples\n"
-        "- `serial` — Serial port recommended practices and examples\n"
-        "- `http` — HTTP client examples\n"
-        "- `ssh` — SSH examples\n"
+        "Available topics:\n\n"
+        "**Plugin SDK (best practices & examples):**\n"
+        "- `tcp` — TCP socket practices, SDK examples, and TcpSocket API reference\n"
+        "- `udp` — UDP socket practices, SDK examples, and UdpSocket API reference\n"
+        "- `serial` — Serial port practices, SDK examples, and SerialPorts API reference\n"
+        "- `http` — HTTP client SDK examples and HttpClient API reference\n"
+        "- `ssh` — SSH SDK examples and Ssh API reference\n"
         "- `plugin_framework` — Basic plugin framework example\n"
+        "- `building_a_plugin` — Getting started guide\n"
         "- `reserved_functions` — All Q-SYS reserved design-time functions\n"
-        "- `scoping` — Lua scoping best practices\n"
-        "- `pcall` — Error handling with pcall\n"
-        "- `style_guide` — Code style guide\n"
         "- `reserved_controls` — Reserved control names\n"
-        "- `building_a_plugin` — Getting started guide\n\n"
+        "- `style_guide` — Code style guide\n"
+        "- `scoping` — Lua scoping best practices\n"
+        "- `pcall` — Error handling with pcall\n\n"
+        "**Control Scripting APIs (runtime classes & utilities):**\n"
+        "- `crypto` — Crypto class: Base64 encode/decode, CRC16, HMAC, MD5\n"
+        "- `json_parsing` — JSON encoding/decoding with RapidJSON\n"
+        "- `xml_parsing` — XML parsing with LuaXML\n"
+        "- `timer` — Timer class for periodic and one-shot timers\n"
+        "- `controls_io` — Controls[] table for reading/writing plugin controls at runtime\n"
+        "- `notifications` — Notifications class for user-facing alerts\n"
+        "- `system` — System class: platform info, design name, etc.\n"
+        "- `log` — Log class for structured debug logging\n"
+        "- `hex_data` — Hex data handling and Lua Bitstring library\n"
+        "- `named_components` — Named Components and Component API\n"
+        "- `dynamic_pages` — Dynamic page management in plugins\n"
+        "- `storing_secrets` — Securely storing secrets in plugins\n\n"
+        "**IMPORTANT:** Always fetch the relevant Control Scripting API docs alongside SDK docs. "
+        "For example, if using TCP, fetch both `tcp` (for SDK practices) and `controls_io` (for Controls[] usage). "
+        "If the protocol requires encoding (e.g., Base64, hex), fetch `crypto` or `hex_data`. "
+        "Always fetch `timer` when the plugin needs polling or periodic tasks.\n\n"
         f"The user selected protocol: **{protocol}**. Fetch the relevant protocol SDK docs before generating code.\n"
     )
 
