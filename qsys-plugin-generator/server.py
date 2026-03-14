@@ -229,9 +229,12 @@ def call_claude(messages, system_prompt, tools, max_retries=3):
 
 
 
-def load_system_prompt(protocol=""):
+def load_system_prompt(protocol="", mode="create"):
     claude_md = open(os.path.join(BASE_DIR, "prompts/CLAUDE.md")).read()
-    skill_md = open(os.path.join(BASE_DIR, "prompts/SKILL.md")).read()
+    if mode == "modify":
+        skill_md = open(os.path.join(BASE_DIR, "prompts/MODIFY_SKILL.md")).read()
+    else:
+        skill_md = open(os.path.join(BASE_DIR, "prompts/SKILL.md")).read()
 
     sdk_topics_note = (
         "# SDK Reference Documentation\n\n"
@@ -287,21 +290,63 @@ def index():
 
 @app.route("/generate", methods=["POST"])
 def generate():
+    mode        = request.form.get("mode", "create")
     plugin_name = request.form.get("plugin_name", "").strip()
     description = request.form.get("description", "")
     protocol    = request.form.get("protocol", "")
     connection  = request.form.get("connection", "").strip()
     api_doc_url = request.form.get("api_doc_url", "").strip()
 
-    user_message = f"""Create a Q-SYS plugin with the following details:
+    message_content = []
+
+    # --- Handle plugin file uploads for modify mode ---
+    if mode == "modify":
+        plugin_files = {}
+        for f in request.files.getlist("plugin_files"):
+            if f and f.filename:
+                raw = f.read()
+                fname = f.filename.lower()
+                if fname.endswith(".zip"):
+                    zip_data = io.BytesIO(raw)
+                    try:
+                        with zipfile.ZipFile(zip_data) as zf:
+                            for name in zf.namelist():
+                                if name.endswith(".lua") and not name.startswith("__MACOSX"):
+                                    content = zf.read(name).decode("utf-8", errors="replace")
+                                    plugin_files[os.path.basename(name)] = content
+                    except zipfile.BadZipFile:
+                        return jsonify({"error": "Invalid ZIP file."}), 400
+                elif fname.endswith(".qplug"):
+                    plugin_files[f.filename] = raw.decode("utf-8", errors="replace")
+                elif fname.endswith(".lua"):
+                    plugin_files[f.filename] = raw.decode("utf-8", errors="replace")
+
+        if not plugin_files:
+            return jsonify({"error": "Please upload at least one plugin file (.lua, .zip, or .qplug)."}), 400
+
+        # Build plugin code sections for the user message
+        plugin_code_sections = []
+        for fname, content in sorted(plugin_files.items()):
+            plugin_code_sections.append(f"--- File: {fname} ---\n{content}")
+        plugin_code_text = "\n\n".join(plugin_code_sections)
+
+        user_message = f"""Here is my existing Q-SYS plugin code:
+
+{plugin_code_text}
+
+Please make the following modifications:
+
+Plugin Name: {plugin_name if plugin_name else 'Not specified'}
+Changes Requested: {description}
+"""
+    else:
+        user_message = f"""Create a Q-SYS plugin with the following details:
 
 Plugin Name: {plugin_name if plugin_name else 'Not specified'}
 Description: {description}
 Protocol: {protocol}
 Connection: {connection if connection else 'Not specified'}
 """
-
-    message_content = []
 
     # --- API / protocol document ---
     if api_doc_url:
@@ -374,14 +419,14 @@ Connection: {connection if connection else 'Not specified'}
     messages = [{"role": "user", "content": message_content}]
 
     try:
-        response = call_claude(messages, load_system_prompt(protocol), tools)
+        response = call_claude(messages, load_system_prompt(protocol, mode), tools)
     except RateLimitError:
         return jsonify({"error": "Rate limited by the API. Please wait a minute and try again."}), 429
 
     # Extract text from the final response (may have mixed content blocks)
     assistant_text = extract_text_from_response(response)
     messages.append({"role": "assistant", "content": response.content})
-    conversations[conv_id] = {"messages": messages, "protocol": protocol, "tools": tools}
+    conversations[conv_id] = {"messages": messages, "protocol": protocol, "tools": tools, "mode": mode}
 
     return jsonify({"result": assistant_text, "conversation_id": conv_id})
 
@@ -404,7 +449,7 @@ def reply():
 
     try:
         trimmed = trim_messages_for_api(messages)
-        response = call_claude(trimmed, load_system_prompt(conv["protocol"]), tools)
+        response = call_claude(trimmed, load_system_prompt(conv["protocol"], conv.get("mode", "create")), tools)
     except RateLimitError:
         # Remove the user message we just appended since the call failed
         messages.pop()

@@ -111,6 +111,92 @@
       height: 100%;
     }
 
+    /* ---- mode selector ---- */
+    .mode-selector {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 0;
+    }
+
+    .mode-card {
+      flex: 1;
+      background: #1a1a1a;
+      border: 1px solid #3a3a3a;
+      border-radius: 10px;
+      padding: 24px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .mode-card:hover {
+      border-color: #4a9eff;
+      background: rgba(74,158,255,0.04);
+    }
+
+    .mode-card-icon {
+      color: #666;
+      margin-bottom: 12px;
+    }
+
+    .mode-card:hover .mode-card-icon { color: #4a9eff; }
+
+    .mode-card h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #e0e0e0;
+      margin-bottom: 6px;
+    }
+
+    .mode-card p {
+      font-size: 0.78rem;
+      color: #777;
+      line-height: 1.4;
+    }
+
+    .mode-selector.hidden { display: none; }
+
+    /* ---- plugin file upload (modify mode) ---- */
+    .plugin-files-group { display: none; }
+    .plugin-files-group.visible { display: block; }
+
+    .plugin-file-list {
+      margin-top: 10px;
+    }
+
+    .plugin-file-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #1e2a1e;
+      border: 1px solid #2e4a2e;
+      border-radius: 6px;
+      padding: 6px 13px;
+      margin-top: 6px;
+      font-size: 0.83rem;
+      color: #6ee67b;
+    }
+
+    .plugin-file-item svg { flex-shrink: 0; }
+
+    .btn-clear-plugin-files {
+      background: none;
+      border: none;
+      color: #888;
+      cursor: pointer;
+      font-size: 0.78rem;
+      margin-top: 8px;
+      padding: 4px 0;
+      transition: color 0.12s;
+    }
+
+    .btn-clear-plugin-files:hover { color: #f87171; }
+
+    /* ---- create-only fields visibility ---- */
+    .create-only { display: block; }
+    .create-only.row-2 { display: grid; }
+    .card.mode-modify .create-only { display: none !important; }
+
     /* ---- form fields ---- */
     .form-group { margin-bottom: 22px; }
 
@@ -534,8 +620,31 @@
   </header>
 
   <div class="page-layout" id="pageLayout">
-    <div class="card">
-      <form id="pluginForm">
+    <div class="card" id="mainCard">
+      <!-- Mode Selector -->
+      <div class="mode-selector" id="modeSelector">
+        <div class="mode-card" data-mode="create">
+          <div class="mode-card-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+          </div>
+          <h3>Create New Plugin</h3>
+          <p>Scaffold a complete plugin from scratch</p>
+        </div>
+        <div class="mode-card" data-mode="modify">
+          <div class="mode-card-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </div>
+          <h3>Modify Existing Plugin</h3>
+          <p>Upload a plugin and make changes</p>
+        </div>
+      </div>
+
+      <form id="pluginForm" style="display:none">
 
         <!-- Phase 1: Name + Description -->
         <div class="form-group">
@@ -543,8 +652,28 @@
           <input type="text" id="pluginName" placeholder="e.g. Sony VPL Projector" required>
         </div>
 
+        <!-- Plugin file upload (modify mode only) -->
+        <div class="form-group plugin-files-group" id="pluginFilesGroup">
+          <label>Existing Plugin Files</label>
+          <div class="file-drop" id="pluginFileDrop">
+            <input type="file" id="pluginFiles" accept=".lua,.qplug,.zip" multiple>
+            <div class="file-drop-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="12" y1="18" x2="12" y2="12"/>
+                <line x1="9" y1="15" x2="15" y2="15"/>
+              </svg>
+            </div>
+            <p>Drop plugin files or <span>browse</span></p>
+            <p class="file-hint">.lua · .qplug · .zip</p>
+          </div>
+          <div class="plugin-file-list" id="pluginFileList"></div>
+          <button type="button" class="btn-clear-plugin-files" id="clearPluginFiles" style="display:none">Clear all files</button>
+        </div>
+
         <div class="form-group">
-          <label for="description">Plugin Description</label>
+          <label for="description" id="descriptionLabel">Plugin Description</label>
           <textarea
             id="description"
             placeholder="Describe what the plugin does and what device it controls. E.g. 'Control a Sony projector — power, input select, and volume over TCP.'"
@@ -563,7 +692,7 @@
         <div class="phase2" id="phase2">
           <hr class="phase-divider">
 
-          <div class="row-2">
+          <div class="row-2 create-only">
             <div class="form-group" style="margin-bottom:0">
               <label for="protocol">Protocol</label>
               <select id="protocol">
@@ -638,7 +767,7 @@
       </div>
 
       <div class="error-msg" id="errorMsg"></div>
-      <button type="button" class="btn-new-plugin" id="newPluginBtn">+ Create New Plugin</button>
+      <button type="button" class="btn-new-plugin" id="newPluginBtn">+ Start Over</button>
     </div>
 
     <div class="chat-panel" id="chatPanel">
@@ -663,6 +792,42 @@
   </div>
 
   <script>
+    // --- Mode selection ---
+    const modeSelector    = document.getElementById('modeSelector');
+    const mainCard        = document.getElementById('mainCard');
+    const headerSubtitle  = document.querySelector('header p');
+    const pluginFilesGroup = document.getElementById('pluginFilesGroup');
+    const descriptionLabel = document.getElementById('descriptionLabel');
+    let selectedMode = null;
+
+    document.querySelectorAll('.mode-card').forEach(card => {
+      card.addEventListener('click', () => {
+        selectedMode = card.dataset.mode;
+        modeSelector.classList.add('hidden');
+        form.style.display = '';
+
+        if (selectedMode === 'modify') {
+          mainCard.classList.add('mode-modify');
+          pluginFilesGroup.classList.add('visible');
+          descriptionLabel.textContent = 'Modification Description';
+          descriptionEl.placeholder = 'Describe what changes you want to make to this plugin...';
+          headerSubtitle.textContent = 'Upload your plugin and describe the changes you need.';
+          // In modify mode, skip phase1 continue and go straight to phase2
+          continueBtn.style.display = 'none';
+          phase2.classList.add('revealed');
+          phase2Open = true;
+        } else {
+          mainCard.classList.remove('mode-modify');
+          pluginFilesGroup.classList.remove('visible');
+          descriptionLabel.textContent = 'Plugin Description';
+          descriptionEl.placeholder = "Describe what the plugin does and what device it controls. E.g. 'Control a Sony projector — power, input select, and volume over TCP.'";
+          headerSubtitle.textContent = 'Describe your plugin and let Claude scaffold the Lua files.';
+        }
+
+        pluginNameEl.focus();
+      });
+    });
+
     // --- Progressive reveal ---
     const pluginNameEl  = document.getElementById('pluginName');
     const descriptionEl = document.getElementById('description');
@@ -697,7 +862,7 @@
       });
     });
 
-    // --- File drop zone ---
+    // --- API doc file drop zone ---
     const fileDrop    = document.getElementById('fileDrop');
     const apiFileEl   = document.getElementById('apiFile');
     const fileNameEl  = document.getElementById('fileName');
@@ -729,6 +894,53 @@
       fileNameTxt.textContent = '';
     });
 
+    // --- Plugin file upload (modify mode) ---
+    const pluginFileDrop   = document.getElementById('pluginFileDrop');
+    const pluginFilesInput = document.getElementById('pluginFiles');
+    const pluginFileList   = document.getElementById('pluginFileList');
+    const clearPluginFiles = document.getElementById('clearPluginFiles');
+    let pluginFileStore = new DataTransfer();
+
+    ['dragenter','dragover'].forEach(evt =>
+      pluginFileDrop.addEventListener(evt, e => { e.preventDefault(); pluginFileDrop.classList.add('dragover'); })
+    );
+    ['dragleave','drop'].forEach(evt =>
+      pluginFileDrop.addEventListener(evt, e => { e.preventDefault(); pluginFileDrop.classList.remove('dragover'); })
+    );
+    pluginFileDrop.addEventListener('drop', e => {
+      if (e.dataTransfer.files.length) addPluginFiles(e.dataTransfer.files);
+    });
+
+    pluginFilesInput.addEventListener('change', () => {
+      if (pluginFilesInput.files.length) addPluginFiles(pluginFilesInput.files);
+    });
+
+    function addPluginFiles(files) {
+      for (const f of files) {
+        pluginFileStore.items.add(f);
+      }
+      pluginFilesInput.files = pluginFileStore.files;
+      renderPluginFileList();
+    }
+
+    function renderPluginFileList() {
+      pluginFileList.innerHTML = '';
+      const files = pluginFileStore.files;
+      clearPluginFiles.style.display = files.length > 0 ? '' : 'none';
+      for (let i = 0; i < files.length; i++) {
+        const item = document.createElement('div');
+        item.className = 'plugin-file-item';
+        item.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span>${files[i].name}</span>`;
+        pluginFileList.appendChild(item);
+      }
+    }
+
+    clearPluginFiles.addEventListener('click', () => {
+      pluginFileStore = new DataTransfer();
+      pluginFilesInput.files = pluginFileStore.files;
+      renderPluginFileList();
+    });
+
     // --- Form submit ---
     const form          = document.getElementById('pluginForm');
     const generateBtn   = document.getElementById('generateBtn');
@@ -754,7 +966,6 @@
     }
 
     function stripCodeBlocks(text) {
-      // Remove fenced code blocks (``` ... ```) and collapse extra blank lines
       return text.replace(/```[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n').trim();
     }
 
@@ -791,10 +1002,20 @@
       generateBtn.disabled = true;
 
       const fd = new FormData();
+      fd.append('mode', selectedMode || 'create');
       fd.append('plugin_name', pluginNameEl.value.trim());
       fd.append('description', descriptionEl.value.trim());
-      fd.append('protocol', document.getElementById('protocol').value);
-      fd.append('connection', document.getElementById('connection').value.trim());
+
+      if (selectedMode === 'modify') {
+        // Attach plugin files
+        const pFiles = pluginFileStore.files;
+        for (let i = 0; i < pFiles.length; i++) {
+          fd.append('plugin_files', pFiles[i]);
+        }
+      } else {
+        fd.append('protocol', document.getElementById('protocol').value);
+        fd.append('connection', document.getElementById('connection').value.trim());
+      }
 
       if (document.getElementById('webSearch').checked) {
         fd.append('web_search', 'on');
@@ -923,7 +1144,7 @@
       });
     });
 
-    // --- New Plugin ---
+    // --- Start Over ---
     newPluginBtn.addEventListener('click', () => {
       pageLayout.classList.remove('chat-active');
       newPluginBtn.classList.remove('visible');
@@ -934,6 +1155,7 @@
 
       // Reset form
       form.reset();
+      form.style.display = 'none';
       phase2.classList.remove('revealed');
       phase2Open = false;
       continueBtn.style.display = '';
@@ -941,14 +1163,26 @@
       fileNameEl.classList.remove('visible');
       fileNameTxt.textContent = '';
 
+      // Reset mode
+      selectedMode = null;
+      modeSelector.classList.remove('hidden');
+      mainCard.classList.remove('mode-modify');
+      pluginFilesGroup.classList.remove('visible');
+      descriptionLabel.textContent = 'Plugin Description';
+      descriptionEl.placeholder = "Describe what the plugin does and what device it controls. E.g. 'Control a Sony projector — power, input select, and volume over TCP.'";
+      headerSubtitle.textContent = 'Describe your plugin and let Claude scaffold the Lua files.';
+
+      // Clear plugin files
+      pluginFileStore = new DataTransfer();
+      pluginFilesInput.files = pluginFileStore.files;
+      renderPluginFileList();
+
       // Reset tabs to URL
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
       document.querySelector('.tab-btn[data-tab="url"]').classList.add('active');
       document.getElementById('tab-url').classList.add('active');
       activeTab = 'url';
-
-      pluginNameEl.focus();
     });
   </script>
 
