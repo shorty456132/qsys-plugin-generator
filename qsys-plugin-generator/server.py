@@ -229,14 +229,35 @@ def call_claude(messages, system_prompt, tools, max_retries=3):
 
 
 
-def load_system_prompt(protocol="", mode="create"):
-    claude_md = open(os.path.join(BASE_DIR, "prompts/CLAUDE.md")).read()
-    if mode == "modify":
-        skill_md = open(os.path.join(BASE_DIR, "prompts/MODIFY_SKILL.md")).read()
-    else:
-        skill_md = open(os.path.join(BASE_DIR, "prompts/SKILL.md")).read()
+# Agent-to-skill composition: which skills each agent loads, in order
+AGENT_SKILLS = {
+    "create": [
+        "file-output-format",
+        "connection-settings",
+        "protocol-discovery",
+        "file-specifications",
+        "control-arrays",
+        "layout-design",
+        "runtime-practices",
+        "consistency-checklist",
+        "output-summary",
+    ],
+    "modify": [
+        "file-output-format",
+        "connection-settings",
+        "file-specifications",
+        "control-arrays",
+        "layout-design",
+        "runtime-practices",
+        "consistency-checklist",
+        "output-summary",
+    ],
+}
 
-    sdk_topics_note = (
+
+def build_sdk_topics_note(protocol=""):
+    """Build the SDK reference documentation note listing available topics."""
+    return (
         "# SDK Reference Documentation\n\n"
         "You have access to a `get_sdk_reference` tool to retrieve detailed Q-SYS SDK documentation on demand. "
         "Use it to look up specific topics when you need detailed API references or code examples.\n\n"
@@ -274,12 +295,28 @@ def load_system_prompt(protocol="", mode="create"):
         f"The user selected protocol: **{protocol}**. Fetch the relevant protocol SDK docs before generating code.\n"
     )
 
+
+def load_system_prompt(protocol="", mode="create"):
+    """Assemble the system prompt from CLAUDE.md + SDK topics + agent instructions + skills."""
+    claude_md = open(os.path.join(BASE_DIR, "prompts/CLAUDE.md")).read()
+    sdk_topics_note = build_sdk_topics_note(protocol)
+    agent_md = open(os.path.join(BASE_DIR, f"prompts/agents/{mode}.md")).read()
+
+    skill_sections = []
+    for skill_name in AGENT_SKILLS.get(mode, AGENT_SKILLS["create"]):
+        path = os.path.join(BASE_DIR, f"prompts/skills/{skill_name}.md")
+        with open(path, "r", encoding="utf-8") as f:
+            skill_sections.append(f.read())
+    skills_md = "\n\n---\n\n".join(skill_sections)
+
     return (
         f"{claude_md}\n\n"
         f"---\n\n"
         f"{sdk_topics_note}\n\n"
         f"---\n\n"
-        f"{skill_md}"
+        f"{agent_md}\n\n"
+        f"---\n\n"
+        f"{skills_md}"
     )
 
 
