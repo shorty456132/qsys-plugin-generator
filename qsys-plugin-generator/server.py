@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory, session, send_file
 from anthropic import Anthropic
 from dotenv import load_dotenv
-import os, base64, uuid, re, io, zipfile, tempfile, shutil, subprocess, time, requests as http
+import os, base64, uuid, re, io, zipfile, tempfile, shutil, subprocess, time, pickle, requests as http
 from anthropic import RateLimitError
 
 load_dotenv()
@@ -12,8 +12,31 @@ app = Flask(__name__, static_folder="static")
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(32).hex())
 client = Anthropic()
 
-# In-memory conversation store: session_id -> {"messages": [...], "protocol": "..."}
-conversations = {}
+# Conversation store with disk persistence to survive server restarts
+CONVERSATIONS_FILE = os.path.join(BASE_DIR, ".conversations.pkl")
+
+
+def _load_conversations():
+    """Load conversations from disk if available."""
+    if os.path.exists(CONVERSATIONS_FILE):
+        try:
+            with open(CONVERSATIONS_FILE, "rb") as f:
+                return pickle.load(f)
+        except Exception as e:
+            print(f"Warning: could not load conversations from disk: {e}")
+    return {}
+
+
+def _save_conversations():
+    """Persist conversations to disk."""
+    try:
+        with open(CONVERSATIONS_FILE, "wb") as f:
+            pickle.dump(conversations, f)
+    except Exception as e:
+        print(f"Warning: could not save conversations to disk: {e}")
+
+
+conversations = _load_conversations()
 
 # Anthropic built-in web search tool
 WEB_SEARCH_TOOL = {
@@ -464,6 +487,7 @@ Connection: {connection if connection else 'Not specified'}
     assistant_text = extract_text_from_response(response)
     messages.append({"role": "assistant", "content": response.content})
     conversations[conv_id] = {"messages": messages, "protocol": protocol, "tools": tools, "mode": mode}
+    _save_conversations()
 
     return jsonify({"result": assistant_text, "conversation_id": conv_id})
 
@@ -494,6 +518,7 @@ def reply():
 
     assistant_text = extract_text_from_response(response)
     messages.append({"role": "assistant", "content": response.content})
+    _save_conversations()
 
     return jsonify({"result": assistant_text})
 
