@@ -495,7 +495,7 @@
     .btn-copy:hover { background: #383838; color: #e0e0e0; }
     .btn-copy.copied { color: #4ade80; border-color: #4ade80; }
 
-    .btn-download {
+    .btn-test {
       background: #1e3a1e;
       border: 1px solid #2e5a2e;
       color: #6ee67b;
@@ -507,9 +507,95 @@
       display: none;
     }
 
-    .btn-download.visible { display: inline-block; }
-    .btn-download:hover { background: #2a4a2a; color: #8fff8f; }
-    .btn-download:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-test.visible { display: inline-block; }
+    .btn-test:hover { background: #2a4a2a; color: #8fff8f; }
+    .btn-test:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-complete {
+      background: #2563eb;
+      border: 1px solid #1d4ed8;
+      color: #fff;
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      display: none;
+    }
+
+    .btn-complete.visible { display: inline-block; }
+    .btn-complete:hover { background: #1d4ed8; }
+    .btn-complete:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ---- checkout modal ---- */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal-overlay.visible { display: flex; }
+
+    .modal-box {
+      background: #242424;
+      border: 1px solid #444;
+      border-radius: 12px;
+      padding: 32px;
+      max-width: 420px;
+      width: 90%;
+      text-align: center;
+    }
+
+    .modal-box h2 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+
+    .modal-box p {
+      font-size: 0.88rem;
+      color: #999;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    .modal-actions button {
+      padding: 10px 22px;
+      border-radius: 7px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+
+    .btn-modal-primary {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+    }
+
+    .btn-modal-primary:hover { background: #1d4ed8; }
+    .btn-modal-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-modal-cancel {
+      background: none;
+      color: #aaa;
+      border: 1px solid #3a3a3a;
+    }
+
+    .btn-modal-cancel:hover { border-color: #555; color: #e0e0e0; }
 
     .output-header-buttons {
       display: flex;
@@ -775,7 +861,8 @@
         <div class="output-header">
           <span>Generated Output</span>
           <div class="output-header-buttons">
-            <button class="btn-download" id="downloadBtn">Download ZIP</button>
+            <button class="btn-test" id="testBtn">Test it out</button>
+            <button class="btn-complete" id="completeBtn">Complete</button>
             <button class="btn-copy" id="copyBtn">Copy</button>
           </div>
         </div>
@@ -787,6 +874,18 @@
           <textarea class="reply-input" id="replyInput" placeholder="Type your reply..." rows="1"></textarea>
           <button class="btn-send" id="sendBtn">Send</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Checkout placeholder modal -->
+  <div class="modal-overlay" id="checkoutModal">
+    <div class="modal-box">
+      <h2>Checkout — Coming Soon</h2>
+      <p>Full source packages (all .lua files, compiled .qplug, and chat history) will be available for purchase soon. For now, you can download the complete package for free.</p>
+      <div class="modal-actions">
+        <button class="btn-modal-cancel" id="checkoutCancel">Cancel</button>
+        <button class="btn-modal-primary" id="checkoutDownload">Download Anyway</button>
       </div>
     </div>
   </div>
@@ -952,16 +1051,21 @@
     const replySection  = document.getElementById('replySection');
     const replyInput    = document.getElementById('replyInput');
     const sendBtn       = document.getElementById('sendBtn');
-    const downloadBtn   = document.getElementById('downloadBtn');
+    const testBtn       = document.getElementById('testBtn');
+    const completeBtn   = document.getElementById('completeBtn');
     const pageLayout    = document.getElementById('pageLayout');
     const newPluginBtn  = document.getElementById('newPluginBtn');
+    const checkoutModal = document.getElementById('checkoutModal');
+    const checkoutCancel = document.getElementById('checkoutCancel');
+    const checkoutDownload = document.getElementById('checkoutDownload');
 
     let conversationId = null;
 
     // Check if any assistant messages contain filename: code blocks
     function checkForFiles(text) {
       if (/```(?:\w+\s+)?filename:/m.test(text)) {
-        downloadBtn.classList.add('visible');
+        testBtn.classList.add('visible');
+        completeBtn.classList.add('visible');
       }
     }
 
@@ -994,7 +1098,8 @@
 
       pageLayout.classList.remove('chat-active');
       errorMsg.classList.remove('visible');
-      downloadBtn.classList.remove('visible');
+      testBtn.classList.remove('visible');
+      completeBtn.classList.remove('visible');
       newPluginBtn.classList.remove('visible');
       chatHistory.innerHTML = '';
       conversationId = null;
@@ -1098,57 +1203,12 @@
       }
     });
 
-    // --- Download ZIP ---
-    downloadBtn.addEventListener('click', async () => {
-      if (!conversationId) return;
-      downloadBtn.disabled = true;
-      try {
-        const pName = pluginNameEl.value.trim();
-        const res = await fetch('/download', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conversation_id: conversationId, plugin_name: pName }),
-        });
-        if (!res.ok) {
-          const json = await res.json().catch(() => null);
-          throw new Error(json?.error || `Server error ${res.status}`);
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const safeName = pName.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-') || 'plugin';
-        a.download = safeName + '.zip';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      } catch (err) {
-        errorMsg.textContent = err.message || 'Download failed.';
-        errorMsg.classList.add('visible');
-      } finally {
-        downloadBtn.disabled = false;
-      }
-    });
-
-    // --- Copy (copies last assistant message) ---
-    copyBtn.addEventListener('click', () => {
-      const text = getLastAssistantText();
-      navigator.clipboard.writeText(text).then(() => {
-        copyBtn.textContent = 'Copied!';
-        copyBtn.classList.add('copied');
-        setTimeout(() => {
-          copyBtn.textContent = 'Copy';
-          copyBtn.classList.remove('copied');
-        }, 2000);
-      });
-    });
-
-    // --- Start Over ---
-    newPluginBtn.addEventListener('click', () => {
+    // --- Shared UI reset ---
+    function resetUI() {
       pageLayout.classList.remove('chat-active');
       newPluginBtn.classList.remove('visible');
-      downloadBtn.classList.remove('visible');
+      testBtn.classList.remove('visible');
+      completeBtn.classList.remove('visible');
       errorMsg.classList.remove('visible');
       chatHistory.innerHTML = '';
       conversationId = null;
@@ -1183,6 +1243,112 @@
       document.querySelector('.tab-btn[data-tab="url"]').classList.add('active');
       document.getElementById('tab-url').classList.add('active');
       activeTab = 'url';
+    }
+
+    // --- Test it out (download .qplug only) ---
+    testBtn.addEventListener('click', async () => {
+      if (!conversationId) return;
+      testBtn.disabled = true;
+      try {
+        const pName = pluginNameEl.value.trim();
+        const res = await fetch('/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversation_id: conversationId, plugin_name: pName }),
+        });
+        if (!res.ok) {
+          const json = await res.json().catch(() => null);
+          throw new Error(json?.error || `Server error ${res.status}`);
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const safeName = pName.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-') || 'plugin';
+        a.download = safeName + '.qplug';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        errorMsg.textContent = err.message || 'Download failed.';
+        errorMsg.classList.add('visible');
+      } finally {
+        testBtn.disabled = false;
+      }
+    });
+
+    // --- Complete (checkout modal) ---
+    completeBtn.addEventListener('click', () => {
+      if (!conversationId) return;
+      checkoutModal.classList.add('visible');
+    });
+
+    checkoutCancel.addEventListener('click', () => {
+      checkoutModal.classList.remove('visible');
+    });
+
+    checkoutModal.addEventListener('click', (e) => {
+      if (e.target === checkoutModal) checkoutModal.classList.remove('visible');
+    });
+
+    checkoutDownload.addEventListener('click', async () => {
+      checkoutDownload.disabled = true;
+      try {
+        const pName = pluginNameEl.value.trim();
+        const res = await fetch('/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversation_id: conversationId, plugin_name: pName }),
+        });
+        if (!res.ok) {
+          const json = await res.json().catch(() => null);
+          throw new Error(json?.error || `Server error ${res.status}`);
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const safeName = pName.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-') || 'plugin';
+        a.download = safeName + '-complete.zip';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        checkoutModal.classList.remove('visible');
+        resetUI();
+      } catch (err) {
+        errorMsg.textContent = err.message || 'Download failed.';
+        errorMsg.classList.add('visible');
+        checkoutModal.classList.remove('visible');
+      } finally {
+        checkoutDownload.disabled = false;
+      }
+    });
+
+    // --- Copy (copies last assistant message) ---
+    copyBtn.addEventListener('click', () => {
+      const text = getLastAssistantText();
+      navigator.clipboard.writeText(text).then(() => {
+        copyBtn.textContent = 'Copied!';
+        copyBtn.classList.add('copied');
+        setTimeout(() => {
+          copyBtn.textContent = 'Copy';
+          copyBtn.classList.remove('copied');
+        }, 2000);
+      });
+    });
+
+    // --- Start Over ---
+    newPluginBtn.addEventListener('click', () => {
+      if (conversationId) {
+        fetch('/delete-conversation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversation_id: conversationId }),
+        }).catch(() => {});
+      }
+      resetUI();
     });
   </script>
 

@@ -650,46 +650,116 @@ def compile_plugin_in_memory(files):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+def format_chat_history_md(messages):
+    """Format conversation messages as a Markdown chat history."""
+    lines = ["# Plugin Generation Chat History\n"]
+    for msg in messages:
+        role = msg["role"]
+        if role not in ("user", "assistant"):
+            continue
+        text = get_text_from_content(msg["content"])
+        if not text:
+            continue
+        heading = "User" if role == "user" else "Assistant"
+        lines.append(f"## {heading}\n")
+        lines.append(text)
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _validate_conversation(conv_id, endpoint_name=""):
+    """Validate a conversation ID exists. Returns (conv, None) or (None, error_response)."""
+    if not conv_id or conv_id not in conversations:
+        print(f"{endpoint_name} failed: conversation '{conv_id}' not found. Active: {list(conversations.keys())}")
+        return None, (jsonify({"error": "Conversation not found. Please start a new generation."}), 400)
+    return conversations[conv_id], None
+
+
+def _extract_and_compile(conv, plugin_name):
+    """Extract files from conversation and compile. Returns (files, qplug_name, qplug_content, safe_name) or (None, ..., error_response)."""
+    files = extract_files_from_conversation(conv["messages"])
+    if not files:
+        for msg in conv["messages"]:
+            if msg["role"] == "assistant":
+                text = get_text_from_content(msg["content"])
+                print(f"No files found. Assistant text preview: {text[:300]}")
+        return None, None, None, None, (jsonify({"error": "No plugin files found in the conversation yet. Continue the conversation until files are generated."}), 400)
+
+    qplug_name, qplug_content = compile_plugin_in_memory(files)
+    safe_name = re.sub(r'[^\w\s-]', '', plugin_name).strip().replace(' ', '-') if plugin_name else None
+    if qplug_name and qplug_content and safe_name:
+        qplug_name = f"{safe_name}.qplug"
+    return files, qplug_name, qplug_content, safe_name, None
+
+
 @app.route("/download", methods=["POST"])
 def download():
+    """Test download: returns compiled .qplug file only (no source)."""
     data = request.get_json()
     conv_id = data.get("conversation_id", "")
     plugin_name = data.get("plugin_name", "").strip()
 
-    if not conv_id or conv_id not in conversations:
-        print(f"Download failed: conversation '{conv_id}' not found. Active conversations: {list(conversations.keys())}")
-        return jsonify({"error": "Conversation not found."}), 400
+    conv, err = _validate_conversation(conv_id, "Download")
+    if err:
+        return err
 
-    files = extract_files_from_conversation(conversations[conv_id]["messages"])
+    files, qplug_name, qplug_content, safe_name, err = _extract_and_compile(conv, plugin_name)
+    if err:
+        return err
 
-    if not files:
-        # Debug: show what text we have in assistant messages
-        for msg in conversations[conv_id]["messages"]:
-            if msg["role"] == "assistant":
-                text = get_text_from_content(msg["content"])
-                print(f"Download failed: no files found. Assistant text preview: {text[:300]}")
-        return jsonify({"error": "No plugin files found in the conversation yet. Continue the conversation until files are generated."}), 400
+    if not qplug_name or not qplug_content:
+        return jsonify({"error": "Plugin compilation failed. Check that all required files are present."}), 400
 
-    # Try to compile the plugin
-    qplug_name, qplug_content = compile_plugin_in_memory(files)
+    buf = io.BytesIO(qplug_content.encode("utf-8"))
+    download_name = qplug_name if qplug_name else "plugin.qplug"
+    return send_file(buf, mimetype="application/octet-stream", as_attachment=True, download_name=download_name)
 
-    # Use plugin_name for the .qplug filename if we have one
-    safe_name = re.sub(r'[^\w\s-]', '', plugin_name).strip().replace(' ', '-') if plugin_name else None
-    if qplug_name and qplug_content and safe_name:
-        qplug_name = f"{safe_name}.qplug"
 
-    zip_filename = f"{safe_name}.zip" if safe_name else "plugin.zip"
+@app.route("/complete", methods=["POST"])
+def complete():
+    """Final download: returns full ZIP with source, compiled .qplug, and chat history. Deletes conversation."""
+    data = request.get_json()
+    conv_id = data.get("conversation_id", "")
+    plugin_name = data.get("plugin_name", "").strip()
 
+    conv, err = _validate_conversation(conv_id, "Complete")
+    if err:
+        return err
+
+    files, qplug_name, qplug_content, safe_name, err = _extract_and_compile(conv, plugin_name)
+    if err:
+        return err
+
+    # Generate chat history
+    chat_history = format_chat_history_md(conv["messages"])
+
+    # Build ZIP with source files + compiled .qplug + chat history
+    zip_filename = f"{safe_name}-complete.zip" if safe_name else "plugin-complete.zip"
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for fname, content in files.items():
             zf.writestr(fname, content)
-        # Include the compiled .qplug if compilation succeeded
         if qplug_name and qplug_content:
             zf.writestr(qplug_name, qplug_content)
+        zf.writestr("chat-history.md", chat_history)
     buf.seek(0)
 
+    # Delete conversation
+    del conversations[conv_id]
+    _save_conversations()
+
     return send_file(buf, mimetype="application/zip", as_attachment=True, download_name=zip_filename)
+
+
+@app.route("/delete-conversation", methods=["POST"])
+def delete_conversation():
+    """Delete a conversation (used by Start Over)."""
+    data = request.get_json()
+    conv_id = data.get("conversation_id", "")
+    if conv_id and conv_id in conversations:
+        del conversations[conv_id]
+        _save_conversations()
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
