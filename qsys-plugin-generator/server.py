@@ -345,7 +345,15 @@ def load_system_prompt(protocol="", mode="create"):
 
 @app.route("/")
 def index():
+    dist = os.path.join(BASE_DIR, "static", "dist", "index.html")
+    if os.path.exists(dist):
+        return send_from_directory("static/dist", "index.html")
     return send_from_directory("static", "index.html")
+
+
+@app.route("/assets/<path:filename>")
+def assets(filename):
+    return send_from_directory("static/dist/assets", filename)
 
 
 @app.route("/generate", methods=["POST"])
