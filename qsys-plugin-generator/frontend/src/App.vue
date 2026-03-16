@@ -84,7 +84,9 @@ async function onStartOver() {
         v-show="phase === 'form' || phase === 'chat'"
         v-model:plugin-name="pluginName"
         :mode="selectedMode"
+        :show-back="phase === 'form'"
         @generate="onGenerate"
+        @cancel="onStartOver"
       />
 
       <LoadingSpinner

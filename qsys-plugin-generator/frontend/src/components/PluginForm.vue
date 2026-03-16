@@ -4,10 +4,12 @@ import FileDropZone from './FileDropZone.vue'
 
 const props = defineProps<{
   mode: 'create' | 'modify'
+  showBack?: boolean
 }>()
 
 defineEmits<{
   generate: [formData: FormData]
+  cancel: []
 }>()
 
 const pluginName = defineModel<string>('pluginName', { required: true })
@@ -77,6 +79,13 @@ const descriptionPlaceholder = computed(() =>
 
 <template>
   <form @submit.prevent="onSubmit($emit)">
+    <button v-if="showBack" type="button" class="btn-back" @click="$emit('cancel')">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M11 7H3M6.5 3.5L3 7l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Back
+    </button>
+
     <div class="form-group">
       <label for="pluginName">Plugin Name</label>
       <input
