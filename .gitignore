@@ -1,5 +1,8 @@
 .env
 *.local.json
 .conversations.pkl
+.conversations.json
+*.db
+__pycache__/
 node_modules/
 qsys-plugin-generator/static/dist/

@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory, session, send_file
 from anthropic import Anthropic
 from dotenv import load_dotenv
-import os, base64, uuid, re, io, zipfile, tempfile, shutil, subprocess, time, pickle, requests as http
+import os, base64, uuid, re, io, zipfile, tempfile, shutil, subprocess, time, json, requests as http
 from anthropic import RateLimitError
 
 load_dotenv()
@@ -13,15 +13,36 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(32).hex())
 client = Anthropic()
 
 # Conversation store with disk persistence to survive server restarts
-CONVERSATIONS_FILE = os.path.join(BASE_DIR, ".conversations.pkl")
+CONVERSATIONS_FILE = os.path.join(BASE_DIR, ".conversations.json")
+
+
+def serialize_content(content):
+    """Convert Anthropic SDK content blocks to JSON-serializable dicts."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        result = []
+        for block in content:
+            if isinstance(block, dict):
+                result.append(block)
+            elif hasattr(block, "model_dump"):
+                result.append(block.model_dump())
+            elif hasattr(block, "__dict__"):
+                result.append(block.__dict__)
+            else:
+                result.append(block)
+        return result
+    if hasattr(content, "model_dump"):
+        return content.model_dump()
+    return content
 
 
 def _load_conversations():
     """Load conversations from disk if available."""
     if os.path.exists(CONVERSATIONS_FILE):
         try:
-            with open(CONVERSATIONS_FILE, "rb") as f:
-                return pickle.load(f)
+            with open(CONVERSATIONS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
         except Exception as e:
             print(f"Warning: could not load conversations from disk: {e}")
     return {}
@@ -30,8 +51,8 @@ def _load_conversations():
 def _save_conversations():
     """Persist conversations to disk."""
     try:
-        with open(CONVERSATIONS_FILE, "wb") as f:
-            pickle.dump(conversations, f)
+        with open(CONVERSATIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump(conversations, f, default=str)
     except Exception as e:
         print(f"Warning: could not save conversations to disk: {e}")
 
@@ -234,7 +255,7 @@ def call_claude(messages, system_prompt, tools, max_retries=3):
 
         # Process SDK tool calls and continue the conversation
         print(f"SDK tool requests: {[t.input.get('topic') for t in sdk_tool_uses]}")
-        messages.append({"role": "assistant", "content": response.content})
+        messages.append({"role": "assistant", "content": serialize_content(response.content)})
 
         tool_results = []
         for tool_use in sdk_tool_uses:
@@ -345,10 +366,7 @@ def load_system_prompt(protocol="", mode="create"):
 
 @app.route("/")
 def index():
-    dist = os.path.join(BASE_DIR, "static", "dist", "index.html")
-    if os.path.exists(dist):
-        return send_from_directory("static/dist", "index.html")
-    return send_from_directory("static", "index.html")
+    return send_from_directory("static/dist", "index.html")
 
 
 @app.route("/assets/<path:filename>")
@@ -493,7 +511,7 @@ Connection: {connection if connection else 'Not specified'}
 
     # Extract text from the final response (may have mixed content blocks)
     assistant_text = extract_text_from_response(response)
-    messages.append({"role": "assistant", "content": response.content})
+    messages.append({"role": "assistant", "content": serialize_content(response.content)})
     conversations[conv_id] = {"messages": messages, "protocol": protocol, "tools": tools, "mode": mode}
     _save_conversations()
 
@@ -525,7 +543,7 @@ def reply():
         return jsonify({"error": "Rate limited by the API. Please wait a minute and try again."}), 429
 
     assistant_text = extract_text_from_response(response)
-    messages.append({"role": "assistant", "content": response.content})
+    messages.append({"role": "assistant", "content": serialize_content(response.content)})
     _save_conversations()
 
     return jsonify({"result": assistant_text})
@@ -771,4 +789,6 @@ def delete_conversation():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=debug, port=port)
