@@ -1,0 +1,14 @@
+node_modules/
+frontend/node_modules/
+.git/
+.env
+*.pkl
+*.db
+.conversations.json
+__pycache__/
+.claude/
+*.pyc
+.gitignore
+.dockerignore
+README.md
+tipsAndTricks.md

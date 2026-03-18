@@ -1,72 +1,75 @@
-from flask import Flask, request, jsonify, send_from_directory, session, send_file
-from anthropic import Anthropic
+from flask import Flask, request, jsonify, send_from_directory, send_file
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from anthropic import Anthropic, RateLimitError
 from dotenv import load_dotenv
-import os, base64, uuid, re, io, zipfile, tempfile, shutil, subprocess, time, json, requests as http
-from anthropic import RateLimitError
+import os, base64, uuid, re, io, zipfile, tempfile, shutil, subprocess, time, json, logging, threading
+import requests as http
+import database as db
 
 load_dotenv()
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("qsys")
+
+# ---------------------------------------------------------------------------
+# Startup validation
+# ---------------------------------------------------------------------------
+if not os.environ.get("ANTHROPIC_API_KEY"):
+    logger.error("ANTHROPIC_API_KEY is not set. The server will not be able to generate plugins.")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(32).hex())
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB upload limit
+
 client = Anthropic()
 
-# Conversation store with disk persistence to survive server restarts
-CONVERSATIONS_FILE = os.path.join(BASE_DIR, ".conversations.json")
+# ---------------------------------------------------------------------------
+# Rate limiting
+# ---------------------------------------------------------------------------
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=[],
+    storage_uri="memory://",
+)
 
+# ---------------------------------------------------------------------------
+# Database initialization
+# ---------------------------------------------------------------------------
+db.init_db()
 
-def serialize_content(content):
-    """Convert Anthropic SDK content blocks to JSON-serializable dicts."""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        result = []
-        for block in content:
-            if isinstance(block, dict):
-                result.append(block)
-            elif hasattr(block, "model_dump"):
-                result.append(block.model_dump())
-            elif hasattr(block, "__dict__"):
-                result.append(block.__dict__)
-            else:
-                result.append(block)
-        return result
-    if hasattr(content, "model_dump"):
-        return content.model_dump()
-    return content
-
-
-def _load_conversations():
-    """Load conversations from disk if available."""
-    if os.path.exists(CONVERSATIONS_FILE):
+# ---------------------------------------------------------------------------
+# Background cleanup thread — purge expired conversations every hour
+# ---------------------------------------------------------------------------
+def _cleanup_loop():
+    while True:
+        time.sleep(3600)
         try:
-            with open(CONVERSATIONS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Warning: could not load conversations from disk: {e}")
-    return {}
+            db.cleanup_expired(ttl_hours=24)
+        except Exception:
+            logger.exception("Error during conversation cleanup")
 
+_cleanup_thread = threading.Thread(target=_cleanup_loop, daemon=True)
+_cleanup_thread.start()
 
-def _save_conversations():
-    """Persist conversations to disk."""
-    try:
-        with open(CONVERSATIONS_FILE, "w", encoding="utf-8") as f:
-            json.dump(conversations, f, default=str)
-    except Exception as e:
-        print(f"Warning: could not save conversations to disk: {e}")
-
-
-conversations = _load_conversations()
-
-# Anthropic built-in web search tool
+# ---------------------------------------------------------------------------
+# Anthropic tools
+# ---------------------------------------------------------------------------
 WEB_SEARCH_TOOL = {
     "type": "web_search_20250305",
     "name": "web_search",
     "max_uses": 3,
 }
 
-# Custom tool for on-demand SDK documentation retrieval
 SDK_REFERENCE_TOOL = {
     "name": "get_sdk_reference",
     "description": (
@@ -81,30 +84,13 @@ SDK_REFERENCE_TOOL = {
                 "type": "string",
                 "description": "The SDK topic to retrieve documentation for.",
                 "enum": [
-                    "tcp",
-                    "udp",
-                    "serial",
-                    "http",
-                    "ssh",
-                    "plugin_framework",
-                    "reserved_functions",
-                    "scoping",
-                    "pcall",
-                    "style_guide",
-                    "reserved_controls",
-                    "building_a_plugin",
-                    "crypto",
-                    "json_parsing",
-                    "xml_parsing",
-                    "timer",
-                    "controls_io",
-                    "notifications",
-                    "system",
-                    "log",
-                    "hex_data",
-                    "named_components",
-                    "dynamic_pages",
-                    "storing_secrets",
+                    "tcp", "udp", "serial", "http", "ssh",
+                    "plugin_framework", "reserved_functions", "scoping",
+                    "pcall", "style_guide", "reserved_controls",
+                    "building_a_plugin", "crypto", "json_parsing",
+                    "xml_parsing", "timer", "controls_io", "notifications",
+                    "system", "log", "hex_data", "named_components",
+                    "dynamic_pages", "storing_secrets",
                 ],
             }
         },
@@ -112,7 +98,6 @@ SDK_REFERENCE_TOOL = {
     },
 }
 
-# Map SDK topics to documentation files
 SDK_TOPIC_FILES = {
     "tcp": [
         "documents/SDK Help/Recommended_Practices-TCP.md",
@@ -204,6 +189,39 @@ SDK_TOPIC_FILES = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def serialize_content(content):
+    """Convert Anthropic SDK content blocks to JSON-serializable dicts."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        result = []
+        for block in content:
+            if isinstance(block, dict):
+                result.append(block)
+            elif hasattr(block, "model_dump"):
+                result.append(block.model_dump())
+            elif hasattr(block, "__dict__"):
+                result.append(block.__dict__)
+            else:
+                result.append(block)
+        return result
+    if hasattr(content, "model_dump"):
+        return content.model_dump()
+    return content
+
+
+def safe_filename(name):
+    """Sanitize a string for use as a filename."""
+    return re.sub(r'[^\w\s-]', '', name).strip().replace(' ', '-') or "plugin"
+
+
+VALID_PROTOCOLS = {"tcp", "udp", "serial", "http", "ssh", "none", ""}
+VALID_MODES = {"create", "modify"}
+
+
 def handle_sdk_tool(topic):
     """Read SDK documentation files for the given topic and return their content."""
     files = SDK_TOPIC_FILES.get(topic, [])
@@ -243,7 +261,7 @@ def call_claude(messages, system_prompt, tools, max_retries=3):
                 if attempt == max_retries - 1:
                     raise
                 retry_after = float(e.response.headers.get("retry-after", 30))
-                print(f"Rate limited, retrying in {retry_after}s (attempt {attempt + 1}/{max_retries})")
+                logger.warning("Rate limited, retrying in %.0fs (attempt %d/%d)", retry_after, attempt + 1, max_retries)
                 time.sleep(retry_after)
 
         # Check if we need to handle any custom tool calls
@@ -254,7 +272,7 @@ def call_claude(messages, system_prompt, tools, max_retries=3):
             return response
 
         # Process SDK tool calls and continue the conversation
-        print(f"SDK tool requests: {[t.input.get('topic') for t in sdk_tool_uses]}")
+        logger.info("SDK tool requests: %s", [t.input.get("topic") for t in sdk_tool_uses])
         messages.append({"role": "assistant", "content": serialize_content(response.content)})
 
         tool_results = []
@@ -272,29 +290,19 @@ def call_claude(messages, system_prompt, tools, max_retries=3):
     return response
 
 
-
-# Agent-to-skill composition: which skills each agent loads, in order
+# ---------------------------------------------------------------------------
+# Prompt assembly
+# ---------------------------------------------------------------------------
 AGENT_SKILLS = {
     "create": [
-        "file-output-format",
-        "connection-settings",
-        "protocol-discovery",
-        "file-specifications",
-        "control-arrays",
-        "layout-design",
-        "runtime-practices",
-        "consistency-checklist",
-        "output-summary",
+        "file-output-format", "connection-settings", "protocol-discovery",
+        "file-specifications", "control-arrays", "layout-design",
+        "runtime-practices", "consistency-checklist", "output-summary",
     ],
     "modify": [
-        "file-output-format",
-        "connection-settings",
-        "file-specifications",
-        "control-arrays",
-        "layout-design",
-        "runtime-practices",
-        "consistency-checklist",
-        "output-summary",
+        "file-output-format", "connection-settings", "file-specifications",
+        "control-arrays", "layout-design", "runtime-practices",
+        "consistency-checklist", "output-summary",
     ],
 }
 
@@ -364,6 +372,188 @@ def load_system_prompt(protocol="", mode="create"):
     )
 
 
+# ---------------------------------------------------------------------------
+# Message trimming
+# ---------------------------------------------------------------------------
+def trim_messages_for_api(messages):
+    """Create a trimmed copy of messages for API calls, replacing code blocks in older
+    assistant messages with short placeholders to reduce token count."""
+    if len(messages) <= 2:
+        return messages
+
+    code_block_re = re.compile(r"```(?:\w+\s+)?filename:([^\n]+)\n.*?```", re.DOTALL)
+
+    def trim_text(text):
+        def replacer(m):
+            return f"[code: {m.group(1).strip()} — included in plugin files]"
+        return code_block_re.sub(replacer, text)
+
+    def trim_content(content):
+        if isinstance(content, str):
+            return trim_text(content)
+        if isinstance(content, list):
+            trimmed = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    trimmed.append({**block, "text": trim_text(block["text"])})
+                elif hasattr(block, "type") and block.type == "text":
+                    trimmed.append({"type": "text", "text": trim_text(block.text)})
+                else:
+                    trimmed.append(block)
+            return trimmed
+        return content
+
+    trimmed = []
+    for i, msg in enumerate(messages):
+        if i < len(messages) - 2 and msg["role"] == "assistant":
+            trimmed.append({**msg, "content": trim_content(msg["content"])})
+        else:
+            trimmed.append(msg)
+    return trimmed
+
+
+# ---------------------------------------------------------------------------
+# Response / content helpers
+# ---------------------------------------------------------------------------
+def extract_text_from_response(response):
+    """Extract all text blocks from a Claude response (skipping tool_use, search results, etc.)."""
+    parts = []
+    for block in response.content:
+        if hasattr(block, "text"):
+            parts.append(block.text)
+    return "\n".join(parts)
+
+
+def get_text_from_content(content):
+    """Get text from a message content field (may be string, list of blocks, or block objects)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+            elif hasattr(block, "type") and block.type == "text":
+                parts.append(block.text)
+        return "\n".join(parts)
+    return ""
+
+
+def extract_files_from_conversation(messages):
+    """Parse ```filename:xxx code blocks from all assistant messages."""
+    files = {}
+    for msg in messages:
+        if msg["role"] != "assistant":
+            continue
+        text = get_text_from_content(msg["content"])
+        for m in re.finditer(
+            r"```(?:\w+\s+)?filename:([^\n]+)\n(.*?)```",
+            text,
+            re.DOTALL,
+        ):
+            fname = m.group(1).strip()
+            content = m.group(2)
+            files[fname] = content
+    return files
+
+
+def compile_plugin_in_memory(files):
+    """Write files to a temp directory, run compile.py, and return the .qplug content."""
+    tmp_dir = tempfile.mkdtemp(prefix="qsys_plugin_")
+    try:
+        for fname, content in files.items():
+            filepath = os.path.join(tmp_dir, fname)
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(content)
+
+        if "plugin.lua" not in files:
+            return None, None
+
+        compile_script = os.path.join(BASE_DIR, "compile.py")
+        if not os.path.isfile(compile_script):
+            return None, None
+
+        result = subprocess.run(
+            ["python", compile_script, tmp_dir, "--bump=skip"],
+            capture_output=True,
+            text=True,
+            cwd=tmp_dir,
+            timeout=30,
+        )
+
+        if result.returncode != 0:
+            logger.error("Compile error: %s", result.stderr)
+            return None, None
+
+        for f in os.listdir(tmp_dir):
+            if f.endswith(".qplug"):
+                qplug_path = os.path.join(tmp_dir, f)
+                with open(qplug_path, "r", encoding="utf-8") as qf:
+                    return f, qf.read()
+
+        return None, None
+    except Exception:
+        logger.exception("Compile exception")
+        return None, None
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def format_chat_history_md(messages):
+    """Format conversation messages as a Markdown chat history."""
+    lines = ["# Plugin Generation Chat History\n"]
+    for msg in messages:
+        role = msg["role"]
+        if role not in ("user", "assistant"):
+            continue
+        text = get_text_from_content(msg["content"])
+        if not text:
+            continue
+        heading = "User" if role == "user" else "Assistant"
+        lines.append(f"## {heading}\n")
+        lines.append(text)
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _validate_conversation(conv_id, endpoint_name=""):
+    """Validate a conversation ID exists. Returns (conv, None) or (None, error_response)."""
+    if not conv_id:
+        logger.warning("%s failed: empty conversation ID", endpoint_name)
+        return None, (jsonify({"error": "Conversation not found. Please start a new generation."}), 400)
+    conv = db.get_conversation(conv_id)
+    if conv is None:
+        logger.warning("%s failed: conversation '%s' not found", endpoint_name, conv_id)
+        return None, (jsonify({"error": "Conversation not found. Please start a new generation."}), 400)
+    return conv, None
+
+
+def _extract_and_compile(conv, plugin_name):
+    """Extract files from conversation and compile. Returns (files, qplug_name, qplug_content, safe_name) or error."""
+    files = extract_files_from_conversation(conv["messages"])
+    if not files:
+        for msg in conv["messages"]:
+            if msg["role"] == "assistant":
+                text = get_text_from_content(msg["content"])
+                logger.warning("No files found. Assistant text preview: %s", text[:300])
+        return None, None, None, None, (jsonify({"error": "No plugin files found in the conversation yet. Continue the conversation until files are generated."}), 400)
+
+    qplug_name, qplug_content = compile_plugin_in_memory(files)
+    safe_name = safe_filename(plugin_name) if plugin_name else None
+    if qplug_name and qplug_content and safe_name:
+        qplug_name = f"{safe_name}.qplug"
+    return files, qplug_name, qplug_content, safe_name, None
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+
 @app.route("/")
 def index():
     return send_from_directory("static/dist", "index.html")
@@ -375,13 +565,22 @@ def assets(filename):
 
 
 @app.route("/generate", methods=["POST"])
+@limiter.limit("10/hour")
 def generate():
     mode        = request.form.get("mode", "create")
     plugin_name = request.form.get("plugin_name", "").strip()
     description = request.form.get("description", "")
-    protocol    = request.form.get("protocol", "")
+    protocol    = request.form.get("protocol", "").lower()
     connection  = request.form.get("connection", "").strip()
     api_doc_url = request.form.get("api_doc_url", "").strip()
+
+    # --- Validation ---
+    if mode not in VALID_MODES:
+        return jsonify({"error": "Invalid mode."}), 400
+    if not description:
+        return jsonify({"error": "Description is required."}), 400
+    if protocol not in VALID_PROTOCOLS:
+        return jsonify({"error": f"Invalid protocol. Must be one of: {', '.join(VALID_PROTOCOLS - {''})}"}), 400
 
     message_content = []
 
@@ -410,7 +609,6 @@ def generate():
         if not plugin_files:
             return jsonify({"error": "Please upload at least one plugin file (.lua, .zip, or .qplug)."}), 400
 
-        # Build plugin code sections for the user message
         plugin_code_sections = []
         for fname, content in sorted(plugin_files.items()):
             plugin_code_sections.append(f"--- File: {fname} ---\n{content}")
@@ -494,7 +692,7 @@ Connection: {connection if connection else 'Not specified'}
 
     message_content.append({"type": "text", "text": user_message})
 
-    # Build tools list: always include SDK reference tool, optionally include web search
+    # Build tools list
     web_search_enabled = request.form.get("web_search", "") == "on"
     tools = [SDK_REFERENCE_TOOL]
     if web_search_enabled:
@@ -504,32 +702,35 @@ Connection: {connection if connection else 'Not specified'}
     conv_id = str(uuid.uuid4())
     messages = [{"role": "user", "content": message_content}]
 
+    logger.info("New conversation %s (mode=%s, protocol=%s)", conv_id, mode, protocol)
+
     try:
         response = call_claude(messages, load_system_prompt(protocol, mode), tools)
     except RateLimitError:
         return jsonify({"error": "Rate limited by the API. Please wait a minute and try again."}), 429
 
-    # Extract text from the final response (may have mixed content blocks)
     assistant_text = extract_text_from_response(response)
     messages.append({"role": "assistant", "content": serialize_content(response.content)})
-    conversations[conv_id] = {"messages": messages, "protocol": protocol, "tools": tools, "mode": mode}
-    _save_conversations()
+
+    conv_data = {"messages": messages, "protocol": protocol, "tools": tools, "mode": mode}
+    db.save_conversation(conv_id, conv_data)
 
     return jsonify({"result": assistant_text, "conversation_id": conv_id})
 
 
 @app.route("/reply", methods=["POST"])
+@limiter.limit("30/hour")
 def reply():
     data = request.get_json()
     conv_id = data.get("conversation_id", "")
     user_text = data.get("message", "").strip()
 
-    if not conv_id or conv_id not in conversations:
-        return jsonify({"error": "Conversation not found. Please start a new generation."}), 400
+    conv, err = _validate_conversation(conv_id, "Reply")
+    if err:
+        return err
     if not user_text:
         return jsonify({"error": "Message cannot be empty."}), 400
 
-    conv = conversations[conv_id]
     messages = conv["messages"]
     tools = conv.get("tools", [SDK_REFERENCE_TOOL])
     messages.append({"role": "user", "content": user_text})
@@ -538,187 +739,18 @@ def reply():
         trimmed = trim_messages_for_api(messages)
         response = call_claude(trimmed, load_system_prompt(conv["protocol"], conv.get("mode", "create")), tools)
     except RateLimitError:
-        # Remove the user message we just appended since the call failed
         messages.pop()
         return jsonify({"error": "Rate limited by the API. Please wait a minute and try again."}), 429
 
     assistant_text = extract_text_from_response(response)
     messages.append({"role": "assistant", "content": serialize_content(response.content)})
-    _save_conversations()
+    db.save_conversation(conv_id, conv)
 
     return jsonify({"result": assistant_text})
 
 
-def trim_messages_for_api(messages):
-    """Create a trimmed copy of messages for API calls, replacing code blocks in older
-    assistant messages with short placeholders to reduce token count."""
-    if len(messages) <= 2:
-        return messages
-
-    code_block_re = re.compile(r"```(?:\w+\s+)?filename:([^\n]+)\n.*?```", re.DOTALL)
-
-    def trim_text(text):
-        def replacer(m):
-            return f"[code: {m.group(1).strip()} — included in plugin files]"
-        return code_block_re.sub(replacer, text)
-
-    def trim_content(content):
-        if isinstance(content, str):
-            return trim_text(content)
-        if isinstance(content, list):
-            trimmed = []
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    trimmed.append({**block, "text": trim_text(block["text"])})
-                elif hasattr(block, "type") and block.type == "text":
-                    trimmed.append({"type": "text", "text": trim_text(block.text)})
-                else:
-                    trimmed.append(block)
-            return trimmed
-        return content
-
-    trimmed = []
-    # Trim all messages except the last 2 (most recent user + assistant exchange)
-    for i, msg in enumerate(messages):
-        if i < len(messages) - 2 and msg["role"] == "assistant":
-            trimmed.append({**msg, "content": trim_content(msg["content"])})
-        else:
-            trimmed.append(msg)
-    return trimmed
-
-
-def extract_text_from_response(response):
-    """Extract all text blocks from a Claude response (skipping tool_use, search results, etc.)."""
-    parts = []
-    for block in response.content:
-        if hasattr(block, "text"):
-            parts.append(block.text)
-    return "\n".join(parts)
-
-
-def get_text_from_content(content):
-    """Get text from a message content field (may be string, list of blocks, or block objects)."""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                parts.append(block.get("text", ""))
-            elif hasattr(block, "type") and block.type == "text":
-                parts.append(block.text)
-        return "\n".join(parts)
-    return ""
-
-
-def extract_files_from_conversation(messages):
-    """Parse ```filename:xxx code blocks from all assistant messages."""
-    files = {}
-    for msg in messages:
-        if msg["role"] != "assistant":
-            continue
-        text = get_text_from_content(msg["content"])
-        # Match ```lang filename:name or ```filename:name patterns
-        for m in re.finditer(
-            r"```(?:\w+\s+)?filename:([^\n]+)\n(.*?)```",
-            text,
-            re.DOTALL,
-        ):
-            fname = m.group(1).strip()
-            content = m.group(2)
-            files[fname] = content
-    return files
-
-
-def compile_plugin_in_memory(files):
-    """Write files to a temp directory, run compile.py, and return the .qplug content."""
-    tmp_dir = tempfile.mkdtemp(prefix="qsys_plugin_")
-    try:
-        # Write all files to temp directory
-        for fname, content in files.items():
-            filepath = os.path.join(tmp_dir, fname)
-            os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(content)
-
-        # Check if plugin.lua exists (required for compilation)
-        if "plugin.lua" not in files:
-            return None, None
-
-        # Run compile.py
-        compile_script = os.path.join(os.path.dirname(__file__), "compile.py")
-        if not os.path.isfile(compile_script):
-            return None, None
-
-        result = subprocess.run(
-            ["python", compile_script, tmp_dir, "--bump=skip"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-
-        if result.returncode != 0:
-            print(f"Compile error: {result.stderr}")
-            return None, None
-
-        # Find the .qplug file
-        for f in os.listdir(tmp_dir):
-            if f.endswith(".qplug"):
-                qplug_path = os.path.join(tmp_dir, f)
-                with open(qplug_path, "r", encoding="utf-8") as qf:
-                    return f, qf.read()
-
-        return None, None
-    except Exception as e:
-        print(f"Compile exception: {e}")
-        return None, None
-    finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-
-
-def format_chat_history_md(messages):
-    """Format conversation messages as a Markdown chat history."""
-    lines = ["# Plugin Generation Chat History\n"]
-    for msg in messages:
-        role = msg["role"]
-        if role not in ("user", "assistant"):
-            continue
-        text = get_text_from_content(msg["content"])
-        if not text:
-            continue
-        heading = "User" if role == "user" else "Assistant"
-        lines.append(f"## {heading}\n")
-        lines.append(text)
-        lines.append("")
-    return "\n".join(lines)
-
-
-def _validate_conversation(conv_id, endpoint_name=""):
-    """Validate a conversation ID exists. Returns (conv, None) or (None, error_response)."""
-    if not conv_id or conv_id not in conversations:
-        print(f"{endpoint_name} failed: conversation '{conv_id}' not found. Active: {list(conversations.keys())}")
-        return None, (jsonify({"error": "Conversation not found. Please start a new generation."}), 400)
-    return conversations[conv_id], None
-
-
-def _extract_and_compile(conv, plugin_name):
-    """Extract files from conversation and compile. Returns (files, qplug_name, qplug_content, safe_name) or (None, ..., error_response)."""
-    files = extract_files_from_conversation(conv["messages"])
-    if not files:
-        for msg in conv["messages"]:
-            if msg["role"] == "assistant":
-                text = get_text_from_content(msg["content"])
-                print(f"No files found. Assistant text preview: {text[:300]}")
-        return None, None, None, None, (jsonify({"error": "No plugin files found in the conversation yet. Continue the conversation until files are generated."}), 400)
-
-    qplug_name, qplug_content = compile_plugin_in_memory(files)
-    safe_name = re.sub(r'[^\w\s-]', '', plugin_name).strip().replace(' ', '-') if plugin_name else None
-    if qplug_name and qplug_content and safe_name:
-        qplug_name = f"{safe_name}.qplug"
-    return files, qplug_name, qplug_content, safe_name, None
-
-
 @app.route("/download", methods=["POST"])
+@limiter.limit("20/hour")
 def download():
     """Test download: returns compiled .qplug file only (no source)."""
     data = request.get_json()
@@ -742,6 +774,7 @@ def download():
 
 
 @app.route("/complete", methods=["POST"])
+@limiter.limit("20/hour")
 def complete():
     """Final download: returns full ZIP with source, compiled .qplug, and chat history. Deletes conversation."""
     data = request.get_json()
@@ -756,10 +789,8 @@ def complete():
     if err:
         return err
 
-    # Generate chat history
     chat_history = format_chat_history_md(conv["messages"])
 
-    # Build ZIP with source files + compiled .qplug + chat history
     zip_filename = f"{safe_name}-complete.zip" if safe_name else "plugin-complete.zip"
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -770,9 +801,8 @@ def complete():
         zf.writestr("chat-history.md", chat_history)
     buf.seek(0)
 
-    # Delete conversation
-    del conversations[conv_id]
-    _save_conversations()
+    db.delete_conversation(conv_id)
+    logger.info("Conversation %s completed and deleted", conv_id)
 
     return send_file(buf, mimetype="application/zip", as_attachment=True, download_name=zip_filename)
 
@@ -782,9 +812,9 @@ def delete_conversation():
     """Delete a conversation (used by Start Over)."""
     data = request.get_json()
     conv_id = data.get("conversation_id", "")
-    if conv_id and conv_id in conversations:
-        del conversations[conv_id]
-        _save_conversations()
+    if conv_id:
+        db.delete_conversation(conv_id)
+        logger.info("Conversation %s deleted", conv_id)
     return jsonify({"ok": True})
 
 
